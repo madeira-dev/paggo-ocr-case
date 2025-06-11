@@ -11,6 +11,7 @@ const apiHost = withRelatedProject({
 
 export async function fetchDataFromBackend() {
     try {
+        console.log("apihost:", apiHost)
         const response = await fetch(`${apiHost}/hello`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);

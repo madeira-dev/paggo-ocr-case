@@ -2,7 +2,7 @@ import { withRelatedProject } from '@vercel/related-projects';
 
 const backendProjectName = 'paggo-ocr-case-backend';
 
-const defaultApiHost = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+const defaultApiHost = 'https://paggo-ocr-case-backend.vercel.app';
 
 const apiHost = withRelatedProject({
     projectName: backendProjectName,

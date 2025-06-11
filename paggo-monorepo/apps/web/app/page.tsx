@@ -12,7 +12,7 @@ export default function HomePage() {
     async function getData() {
       try {
         setLoading(true);
-        setError(null); // Clear previous errors
+        setError(null);
         const result = await fetchDataFromBackend();
         setData(result);
       } catch (err: any) {

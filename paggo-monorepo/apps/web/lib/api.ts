@@ -2,7 +2,10 @@ import { withRelatedProject } from '@vercel/related-projects';
 
 const backendProjectName = 'paggo-ocr-case-backend';
 
-const defaultApiHost = 'https://paggo-ocr-case-backend.vercel.app';
+/* swap the commented lines below when deploying! (related to defaultApiHost) */
+
+// const defaultApiHost = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
+const defaultApiHost = 'http://localhost:3000'; // local development
 
 const apiHost = withRelatedProject({
     projectName: backendProjectName,

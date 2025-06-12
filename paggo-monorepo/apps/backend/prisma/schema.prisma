@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+    output   = "../generated/prisma"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id        String    @id @default(uuid())
+    email     String    @unique
+    password  String // Store hashed passwords, not plain text!
+    invoices  Invoice[]
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+}
+
+model Invoice {
+    id                String          @id @default(uuid())
+    userId            String
+    user              User            @relation(fields: [userId], references: [id])
+    originalImagePath String // Path or URL to the stored image
+    uploadedAt        DateTime        @default(now())
+    extractedTexts    ExtractedText[]
+}
+
+model ExtractedText {
+    id              String   @id @default(uuid())
+    invoiceId       String
+    invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+    text            String   @db.Text // Large text field
+    llmInteractions Json? // JSON field for LLM interactions (optional)
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+}

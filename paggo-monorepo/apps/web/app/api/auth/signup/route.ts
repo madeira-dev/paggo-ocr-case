@@ -9,7 +9,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
         }
 
-        const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:3000';
+        // const backendUrl = 'http://localhost:3000'; // development
+        const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
 
         const res = await fetch(`${backendUrl}/auth/signup`, {
             method: 'POST',

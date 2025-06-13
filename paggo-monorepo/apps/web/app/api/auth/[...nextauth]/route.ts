@@ -16,6 +16,7 @@ const authOptions: NextAuthOptions = {
 
                 // const backendUrl = 'http://localhost:3000'; // development
                 const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
+                console.log('[NextAuth Authorize] Using backend URL:', backendUrl); // debug line
 
                 try {
                     const res = await fetch(`${backendUrl}/auth/validate-credentials`, {

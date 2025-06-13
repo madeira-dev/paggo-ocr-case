@@ -13,8 +13,10 @@
   "dependencies": {
     "@repo/ui": "workspace:*",
     "@tailwindcss/postcss": "^4.1.10",
+    "@vercel/blob": "^1.1.1",
     "@vercel/related-projects": "^1.0.0",
     "lucide-react": "^0.514.0",
+    "nanoid": "^5.1.5",
     "next": "^15.3.0",
     "next-auth": "^4.24.11",
     "react": "^19.1.0",

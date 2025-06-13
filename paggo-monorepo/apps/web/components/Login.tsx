@@ -64,8 +64,7 @@ export const Login: React.FC = () => {
           setError(data.message || "Sign up failed. Please try again.");
         } else {
           setSuccessMessage("Sign up successful! Please sign in.");
-          setIsLoginView(true); // Switch to login view
-          // Optionally, clear form fields
+          setIsLoginView(true);
           setEmail("");
           setPassword("");
           setConfirmPassword("");

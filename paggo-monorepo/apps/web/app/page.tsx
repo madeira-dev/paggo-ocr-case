@@ -3,37 +3,40 @@
 // Remove useState for isAuthenticated
 import { Sidebar } from "../components/Sidebar";
 import { ChatWindow } from "../components/ChatWindow";
-import { Login } from '../components/Login';
+import { Login } from "../components/Login";
 import { useSession, signOut } from "next-auth/react"; // Import useSession and signOut
-import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const { data: session, status } = useSession(); // Get session data and status
-  // const router = useRouter(); // If you need to redirect programmatically
-
-  // const handleLoginSuccess = () => { // No longer needed
-  //   setIsAuthenticated(true);
-  // };
+  const router = useRouter();
 
   if (status === "loading") {
-    return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Loading...</div>; // Or a proper loading spinner
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
+        Loading...
+      </div>
+    );
   }
 
   if (status === "unauthenticated") {
-    return <Login />; // Removed onLoginSuccess prop
+    return <Login />;
   }
 
-  // If authenticated, show the chat interface
   if (status === "authenticated" && session?.user) {
+    const handleSignOut = async () => {
+      await signOut({ redirect: false }); // Perform sign out without NextAuth redirecting
+      router.push("/"); // Manually redirect to the root page
+    };
+
     return (
       <div className="flex h-screen antialiased text-gray-800 bg-gray-900">
-        <Sidebar /> {/* You might want to pass user info or a signOut button here */}
+        <Sidebar />{" "}
         <main className="flex-grow flex flex-col">
-          {/* Example: Display user name and sign out button */}
           <div className="p-4 bg-gray-800 text-white flex justify-between items-center border-b border-gray-700">
             <span>Welcome, {session.user.name || session.user.email}</span>
             <button
-              onClick={() => signOut({ callbackUrl: '/' })} // Sign out and redirect to home
+              onClick={handleSignOut}
               className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm"
             >
               Sign Out
@@ -45,6 +48,9 @@ export default function HomePage() {
     );
   }
 
-  // Fallback or handle other states if necessary
-  return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">An unexpected error occurred.</div>;
+  return (
+    <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
+      An unexpected error occurred.
+    </div>
+  );
 }

@@ -39,13 +39,13 @@ export const authOptions: NextAuthOptions = {
                             id: user.id,
                             email: user.email,
                             name: user.name,
-                        } as NextAuthUser; // Cast to NextAuthUser
+                        } as NextAuthUser;
                     } else {
-                        return null; // Indicates failed authentication
+                        return null;
                     }
                 } catch (error) {
                     console.error("Error in authorize function calling backend:", error);
-                    return null; // Network error or other issue
+                    return null;
                 }
             },
         }),
@@ -65,7 +65,7 @@ export const authOptions: NextAuthOptions = {
         },
         async session({ session, token }) {
             if (session.user) {
-                (session.user as any).id = token.id as string; // Add id to session user
+                (session.user as any).id = token.id as string; // add id to session user
             }
             return session;
         },

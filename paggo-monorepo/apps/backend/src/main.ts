@@ -7,7 +7,7 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     app.enableCors({
         origin: [
-            'https://your-production-frontend-url.vercel.app',
+            'https://paggo-ocr-case-backend.vercel.app',
             'http://localhost:3001' // remove this later
         ],
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

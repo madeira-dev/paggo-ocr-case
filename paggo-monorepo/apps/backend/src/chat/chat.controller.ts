@@ -10,97 +10,72 @@ import {
     UseGuards, // For authentication
     Req,      // To access request object for user
     UnauthorizedException, // For explicit error handling if needed
+    HttpException, // Import HttpException
+    HttpStatus,    // Import HttpStatus
 } from '@nestjs/common';
-import { OpenaiService } from '../openai/openai.service';
+import { OpenaiService } from '../openai/openai.service'; // OpenaiService might not be directly needed here anymore
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { ChatService } from './chat.service';
 import { CreateChatDto } from './dto/create-chat.dto';
-import { MessageSender } from '../../generated/prisma';
+// MessageSender might not be directly needed here anymore if ChatService handles it
+// import { MessageSender } from '../../generated/prisma';
 import { AuthenticatedGuard } from '../auth/authenticated.guard'; // Import the new guard
 
-interface ChatHistoryMessage { // Define an interface for clarity
-    role: 'user' | 'assistant';
-    content: string;
-}
+// This interface might not be needed if history is handled by ChatService
+// interface ChatHistoryMessage {
+//     role: 'user' | 'assistant';
+//     content: string;
+// }
 
 @Controller('chat')
 export class ChatController {
     private readonly logger = new Logger(ChatController.name);
 
     constructor(
-        private readonly openaiService: OpenaiService,
+        // private readonly openaiService: OpenaiService, // May not be needed directly
         private readonly chatService: ChatService,
     ) { }
 
     private getUserIdFromRequest(req: any): string {
         if (!req.user || !req.user.id) {
-            // This should ideally be caught by AuthenticatedGuard, but as a safeguard:
             this.logger.error('User ID not found on request object. Ensure user is authenticated and session is active.');
             throw new UnauthorizedException('User information not available.');
         }
         return req.user.id;
     }
 
-    @UseGuards(AuthenticatedGuard) // Protect this endpoint using session authentication
+    @UseGuards(AuthenticatedGuard)
     @Post('message')
     @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
     async handleChatMessage(@Body() chatMessageDto: ChatMessageDto, @Req() req: any) {
         const userId = this.getUserIdFromRequest(req);
         this.logger.log(
-            `User ${userId} - Received message: "${chatMessageDto.message}" for chat ID: ${chatMessageDto.chatId || 'new'}`,
+            `User ${userId} - Processing message via ChatService: "${chatMessageDto.message.substring(0, 30)}..." for chat ID: ${chatMessageDto.chatId || 'new'}`,
         );
 
-        let currentChatId = chatMessageDto.chatId;
-        // Explicitly type chatHistoryForAI
-        let chatHistoryForAI: ChatHistoryMessage[] = [];
-
-        if (!currentChatId) {
-            // Create a new chat
-            const newChat = await this.chatService.createChat(userId, {
-                initialUserMessage: chatMessageDto.message, // Title will be generated
-            });
-            currentChatId = newChat.id;
-            this.logger.log(`User ${userId} - New chat created with ID: ${currentChatId}`);
-        } else {
-            // Fetch history for existing chat
-            const fullChat = await this.chatService.getFullChatForContext(userId, currentChatId);
-            chatHistoryForAI = fullChat.messages.map(msg => ({ // This assignment is now type-compatible
-                role: msg.sender === MessageSender.USER ? 'user' : 'assistant',
-                content: msg.content
-            }));
+        try {
+            // Delegate all logic to ChatService.processUserMessage
+            const result = await this.chatService.processUserMessage(userId, chatMessageDto);
+            return result; // This result should match what the frontend expects
+            // { chatId, chatTitle, userMessage, botResponse: { id, content }, isNewChat }
+        } catch (error) {
+            this.logger.error(
+                `Error in ChatController while calling processUserMessage for user ${userId}: ${(error as Error).message}`,
+                (error as Error).stack,
+            );
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            // Fallback for unexpected errors
+            throw new HttpException(
+                'An unexpected error occurred while processing your message.',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
         }
-
-        // Save user's message
-        await this.chatService.addMessageToChat(
-            userId,
-            currentChatId,
-            chatMessageDto.message,
-            MessageSender.USER,
-            chatMessageDto.extractedOcrText,
-            chatMessageDto.fileName,
-        );
-
-        // Get AI response
-        const botResponseText = await this.openaiService.getChatCompletion(
-            chatMessageDto.message,
-            chatHistoryForAI, // Pass history here
-            chatMessageDto.extractedOcrText,
-            chatMessageDto.fileName,
-        );
-
-        // Save bot's message
-        await this.chatService.addMessageToChat(
-            userId,
-            currentChatId,
-            botResponseText,
-            MessageSender.BOT,
-        );
-
-        return { response: botResponseText, chatId: currentChatId }; // Return chatId for frontend
     }
 
     @UseGuards(AuthenticatedGuard)
-    @Get('list') // Changed from /chats to /chat/list to avoid conflict if you have a /chat/:id
+    @Get('list')
     async getUserChats(@Req() req: any) {
         const userId = this.getUserIdFromRequest(req);
         this.logger.log(`Fetching all chats for user ${userId}`);
@@ -108,11 +83,12 @@ export class ChatController {
     }
 
     @UseGuards(AuthenticatedGuard)
-    @Post('new') // Endpoint to explicitly create a new chat
+    @Post('new')
     @UsePipes(new ValidationPipe({ transform: true, whitelist: true, skipMissingProperties: true }))
     async createNewChat(@Body() createChatDto: CreateChatDto, @Req() req: any) {
         const userId = this.getUserIdFromRequest(req);
         this.logger.log(`User ${userId} - Explicitly creating new chat with title: ${createChatDto.title}`);
+        // Assuming createChat in service is still relevant for explicit creation without an initial message processing flow
         return this.chatService.createChat(userId, createChatDto);
     }
 
@@ -120,15 +96,11 @@ export class ChatController {
     @UseGuards(AuthenticatedGuard)
     @Get(':chatId/messages')
     async getChatMessages(
-        @Param('chatId') chatId: string, // <-- REMOVED ParseUUIDPipe
+        @Param('chatId') chatId: string,
         @Req() req: any,
     ) {
         const userId = this.getUserIdFromRequest(req);
         this.logger.log(`Fetching messages for chat ${chatId} for user ${userId}`);
-        // Ensure chatService.getChatMessages can handle the chatId as a string
-        // and that any necessary validation for CUID format (e.g., non-empty)
-        // is handled either in the service or by a global ValidationPipe if you
-        // were to use a DTO for path parameters. For now, this removes the UUID constraint.
         return this.chatService.getChatMessages(userId, chatId);
     }
 }

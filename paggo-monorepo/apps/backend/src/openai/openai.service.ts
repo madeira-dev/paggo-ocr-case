@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { MessageSender } from '../../generated/prisma'; // For mapping roles
 
 interface ChatMessageForAI {
     role: 'user' | 'assistant' | 'system';
@@ -10,47 +9,41 @@ interface ChatMessageForAI {
 
 @Injectable()
 export class OpenaiService {
-    private openai: OpenAI;
     private readonly logger = new Logger(OpenaiService.name);
+    private openai: OpenAI;
 
     constructor(private configService: ConfigService) {
         const apiKey = this.configService.get<string>('OPENAI_API_KEY');
         if (!apiKey) {
-            throw new Error('OpenAI API key is not configured.');
+            this.logger.error('OPENAI_API_KEY is not configured.');
+            throw new Error('OPENAI_API_KEY is not configured.');
         }
         this.openai = new OpenAI({ apiKey });
     }
 
     async getChatCompletion(
         currentUserMessage: string,
-        chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>, // Renamed from previousMessages
+        chatHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
         extractedOcrText?: string,
         fileName?: string,
-    ): Promise<string> {
-        let systemPromptContent =
-            "You are a helpful assistant for the Paggo OCR Chat application. You help users by responding to their text queries.";
+    ): Promise<string> { // This method now returns a string or throws an error
+        this.logger.log(
+            `Attempting to get chat completion. History length: ${chatHistory.length}`,
+        );
 
-        if (extractedOcrText !== undefined && extractedOcrText !== null) {
-            // This system message modification might be better handled by appending to the user message
-            // or ensuring it's part of the context for the *current* turn.
-            // For now, let's assume the extracted text is part of the currentUserMessage context.
-        }
+        const systemMessageContent = `You are a helpful assistant.
+        ${fileName ? `The user has uploaded a file named "${fileName}".` : ''}
+        ${extractedOcrText ? `The extracted text from the file is: "${extractedOcrText}"` : ''}
+        Respond to the user's message based on this context and the chat history.`;
 
-        const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-            { role: 'system', content: systemPromptContent },
+        const messages: ChatMessageForAI[] = [
+            { role: 'system', content: systemMessageContent },
+            ...chatHistory.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+            })),
+            { role: 'user', content: currentUserMessage },
         ];
-
-        // Add historical messages
-        chatHistory.forEach(msg => {
-            messages.push({ role: msg.role, content: msg.content });
-        });
-
-        // Construct the current user message, potentially including OCR info
-        let userContentForThisTurn = currentUserMessage;
-        if (extractedOcrText !== undefined && extractedOcrText !== null) {
-            userContentForThisTurn = `User's question: "${currentUserMessage}"\n\nExtracted text from file '${fileName || 'uploaded file'}':\n"""\n${extractedOcrText}\n"""`;
-        }
-        messages.push({ role: 'user', content: userContentForThisTurn });
 
         try {
             this.logger.log(`Sending request to OpenAI. History length: ${chatHistory.length}. Current message: "${currentUserMessage.substring(0, 50)}...". File: "${fileName}". Has extracted text: ${!!extractedOcrText}`);
@@ -61,9 +54,10 @@ export class OpenaiService {
             });
 
             const botResponse = chatCompletion.choices[0]?.message?.content;
-            if (!botResponse) {
-                this.logger.error('OpenAI response content is empty.');
-                return 'Sorry, I could not generate a response.';
+
+            if (!botResponse || botResponse.trim() === '') {
+                this.logger.error('OpenAI response content is empty or invalid.');
+                throw new Error('OpenAI failed to generate a valid response content.'); // MODIFIED: Throw error
             }
             this.logger.log(`Received response from OpenAI.`);
             return botResponse.trim();
@@ -72,7 +66,11 @@ export class OpenaiService {
             if (error.response) {
                 this.logger.error('OpenAI API Error Response:', error.response.data);
             }
-            return 'Sorry, I encountered an error trying to reach my brain. Please try again.';
+            // MODIFIED: Re-throw a more specific error or the original one
+            if (error instanceof Error && error.message === 'OpenAI failed to generate a valid response content.') {
+                throw error;
+            }
+            throw new Error(`Failed to get chat completion from OpenAI: ${error.message || 'Unknown API error'}`);
         }
     }
 }

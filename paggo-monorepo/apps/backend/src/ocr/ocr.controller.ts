@@ -11,6 +11,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OcrService } from './ocr.service';
 import { Express } from 'express';
+import * as cuid from 'cuid'; // Import cuid
+import * as path from 'path'; // Import path
 
 @Controller('ocr')
 export class OcrController {
@@ -55,12 +57,31 @@ export class OcrController {
             this.logger.log(
                 `Successfully extracted text from file: ${file.originalname}`,
             );
-            return { text: extractedText };
+
+            const originalName = file.originalname;
+            const extension = path.extname(originalName);
+            const baseName = path.basename(originalName, extension);
+            const uniqueId = cuid();
+            // You can choose the format. Example: originalfilename_cuid.ext
+            const storedFileName = `${baseName}_${uniqueId}${extension}`;
+            // Or, if you prefer a completely unique name not tied to original:
+            // const storedFileName = `${uniqueId}${extension}`;
+
+
+            return {
+                text: extractedText,
+                storedFileName: storedFileName,
+                originalFileName: originalName,
+            };
         } catch (error) {
             this.logger.error(
                 `Failed to extract text from file: ${file.originalname}`,
                 (error as Error).stack,
             );
+            // Ensure the error message from OcrService (like unsupported type) is propagated
+            if (error instanceof HttpException) {
+                throw error;
+            }
             throw new HttpException(
                 (error as Error).message || 'Failed to extract text from file.',
                 HttpStatus.INTERNAL_SERVER_ERROR,

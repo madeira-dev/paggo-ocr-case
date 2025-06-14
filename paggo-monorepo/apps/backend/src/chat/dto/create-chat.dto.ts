@@ -12,10 +12,10 @@ export class CreateChatDto {
 
     @IsOptional()
     @IsString()
-    initialExtractedOcrText?: string;
+    extractedOcrText?: string; // ADDED: Optional property
 
     @IsOptional()
     @IsString()
-    initialFileName?: string;
+    fileName?: string; // ADDED: Optional property
 }
 

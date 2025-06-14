@@ -17,6 +17,7 @@ import { OpenaiService } from '../openai/openai.service'; // OpenaiService might
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { ChatService } from './chat.service';
 import { CreateChatDto } from './dto/create-chat.dto';
+import { DocumentItemDto } from './dto/document-item.dto';
 // MessageSender might not be directly needed here anymore if ChatService handles it
 // import { MessageSender } from '../../generated/prisma';
 import { AuthenticatedGuard } from '../auth/authenticated.guard'; // Import the new guard

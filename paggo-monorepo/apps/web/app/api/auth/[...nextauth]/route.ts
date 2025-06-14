@@ -1,9 +1,8 @@
 import NextAuth, { NextAuthOptions, User as NextAuthUser } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { NextRequest } from 'next/server';
-import { AsyncLocalStorage } from 'async_hooks'; // Import AsyncLocalStorage
+import { AsyncLocalStorage } from 'async_hooks';
 
-// Create an AsyncLocalStorage instance to store the NestJS Set-Cookie string
 const als = new AsyncLocalStorage<{ nestSetCookie?: string | null }>();
 
 const authOptions: NextAuthOptions = {

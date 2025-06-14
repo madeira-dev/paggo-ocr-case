@@ -16,15 +16,15 @@ import {
   Loader2,
   Bot,
   User,
-  ImageIcon, // ADDED ImageIcon
-  FileText, // ADDED FileText
-} from "lucide-react"; // Ensure X is imported
-import { DisplayMessage, Message as BackendMessage } from "../types/chat"; // Import types
-import { fetchChatMessages, sendMessageApi } from "../lib/api"; // Import API functions
+  ImageIcon,
+  FileText,
+} from "lucide-react";
+import { DisplayMessage, Message as BackendMessage } from "../types/chat";
+import { fetchChatMessages, getAuthHeaders } from "../lib/api";
 
 interface ChatWindowProps {
   activeChatId: string | null;
-  onChatCreated: (newChatId: string, newChatTitle?: string) => void; // Callback to update parent
+  onChatCreated: (newChatId: string, newChatTitle?: string) => void;
 }
 
 // Helper to map backend message to display message
@@ -33,10 +33,9 @@ const mapBackendMessageToDisplay = (msg: BackendMessage): DisplayMessage => ({
   text: msg.content,
   sender: msg.sender === "USER" ? "user" : "bot",
   timestamp: msg.createdAt,
-  // Add attachment logic if needed based on fileName/extractedOcrText
   attachment:
     msg.fileName && msg.sender === "USER"
-      ? { name: msg.fileName, type: "" /* Determine type if possible */ }
+      ? { name: msg.fileName, type: "" }
       : undefined,
 });
 
@@ -47,18 +46,8 @@ interface OcrResult {
   originalFileName: string;
 }
 
-// Placeholder for getAuthHeadersInternal - replace with your actual implementation
-// This might come from a context, a utility file, or be defined in this component
-// if it's simple enough and doesn't involve hooks that break rules.
-const getAuthHeadersInternal = () => {
-  // Example:
-  // const token = localStorage.getItem('authToken');
-  // return token ? { 'Authorization': `Bearer ${token}` } : {};
-  return {}; // Replace with your actual auth header logic
-};
-
 export const ChatWindow: React.FC<ChatWindowProps> = ({
-  activeChatId: activeChatIdProp, // Renamed prop to avoid conflict with potential state
+  activeChatId: activeChatIdProp,
   onChatCreated,
 }) => {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -72,10 +61,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [errorLoadingMessages, setErrorLoadingMessages] = useState<
     string | null
   >(null);
-
-  // Use a ref to store the current activeChatId from props,
-  // as props can change and state updates based on props should be handled in useEffect.
-  // This ref helps in capturing the correct chatId at the moment of sending a message.
   const activeChatIdRef = useRef(activeChatIdProp);
 
   // Update the ref whenever the prop changes
@@ -127,6 +112,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } else {
       setMessages([]); // Clear messages if no chat is active (new chat)
       setErrorLoadingMessages(null);
+      // For new chats, ensure input value is also cleared if user navigated away and back
+      setInputValue("");
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [activeChatIdProp]); // Depend on activeChatIdProp
 
@@ -141,8 +130,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       !isBotTyping &&
       !isFileProcessing
     ) {
-      event.preventDefault();
-      handleSendMessage();
+      // Check if sending is allowed (new chat requires file)
+      if (activeChatIdProp || selectedFile) {
+        event.preventDefault();
+        handleSendMessage();
+      }
     }
   };
 
@@ -178,12 +170,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSendMessage = async (e?: FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
+
+    // MODIFIED: Prevent sending if it's a new chat and no file is selected
+    if (!activeChatIdRef.current && !selectedFile) {
+      // Optionally, show an alert or a more subtle UI hint
+      // alert("Please upload a document to start a new chat.");
+      return;
+    }
+
     if (
       (!inputValue.trim() && !selectedFile) ||
       isFileProcessing ||
       isBotTyping
-    )
+    ) {
       return;
+    }
 
     const currentInputText = inputValue.trim();
     const currentSelectedFile = selectedFile; // Original File object
@@ -221,6 +222,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         ocrFormData.append("file", currentSelectedFile);
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+        // For FormData, Content-Type is set by the browser.
+        // credentials: "include" sends cookies if OCR endpoint is protected.
         const ocrResponse = await fetch(`${backendUrl}/ocr/extract-text`, {
           method: "POST",
           body: ocrFormData,
@@ -238,8 +241,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         const ocrResultData: OcrResult = await ocrResponse.json();
         extractedTextForAI = ocrResultData.text;
-        fileNameForBackendDto = ocrResultData.storedFileName; // Assign unique name for backend DTO
-        displayFileNameForUi = ocrResultData.originalFileName; // Update UI display name from backend's confirmed original
+        fileNameForBackendDto = ocrResultData.storedFileName;
+        displayFileNameForUi = ocrResultData.originalFileName;
 
         if (!extractedTextForAI?.trim()) {
           extractedTextForAI = `[OCR was unable to extract text from the file: ${displayFileNameForUi}]`;
@@ -252,7 +255,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               ? {
                   ...msg,
                   isLoading: false,
-                  attachment: msg.attachment // Use the updated displayFileNameForUi
+                  attachment: msg.attachment
                     ? { ...msg.attachment, name: displayFileNameForUi! }
                     : undefined,
                 }
@@ -268,15 +271,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   ...msg,
                   text: `${currentInputText} (File Error: ${(error as Error).message})`,
                   isLoading: false,
-                  attachment: undefined, // Clear attachment on error
+                  attachment: undefined,
                 }
               : msg
           )
         );
         setIsFileProcessing(false);
-        return; // Stop if OCR failed
-      } finally {
-        setIsFileProcessing(false);
+        return;
       }
     }
 
@@ -293,8 +294,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     ]);
 
     try {
-      // Determine current active chat ID for the payload
-      const chatIdForPayload = activeChatIdRef.current; // Use the ref
+      const chatIdForPayload = activeChatIdRef.current;
 
       const payloadToAI = {
         chatId: chatIdForPayload,
@@ -307,10 +307,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
       const response = await fetch(`${backendUrl}/chat/message`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeadersInternal(),
-        },
+        // MODIFIED: Use getAuthHeaders() from lib/api.ts
+        headers: getAuthHeaders(),
         body: JSON.stringify(payloadToAI),
         credentials: "include",
       });
@@ -325,20 +323,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
 
       const result = await response.json();
+
       const newChatId = result.chatId;
       const botMessageContent = result.botResponse.content;
 
-      // If a new chat was created (i.e., we didn't have an activeChatId before, or it changed),
-      // call the onChatCreated callback. The parent component (page.tsx)
-      // will be responsible for updating its own state which will then flow down
-      // as the activeChatIdProp.
       if (newChatId && newChatId !== activeChatIdRef.current) {
         if (onChatCreated) {
           onChatCreated(newChatId, result.chatTitle || "New Chat");
         }
-        activeChatIdRef.current = newChatId; // Update ref immediately for consistency
+        activeChatIdRef.current = newChatId;
       } else if (!activeChatIdRef.current && newChatId) {
-        // This case handles when the first message creates a new chat
         if (onChatCreated) {
           onChatCreated(newChatId, result.chatTitle || "New Chat");
         }
@@ -360,7 +354,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         const filteredPrev = prev.filter(
           (msg) => msg.id !== botThinkingDisplayMessageId
         );
-        // MODIFIED: Use spread syntax for adding the new error message
         return [
           ...filteredPrev,
           {
@@ -373,12 +366,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       });
     } finally {
       setIsBotTyping(false);
+      if (currentSelectedFile) setIsFileProcessing(false);
     }
   };
 
   const triggerFileInput = () => {
     if (!isFileProcessing && !isBotTyping) fileInputRef.current?.click();
   };
+
+  // Determine if the text input should be disabled
+  const isNewChatWithoutFile = !activeChatIdProp && !selectedFile;
+  const isTextareaDisabled =
+    isFileProcessing ||
+    isBotTyping ||
+    isLoadingMessages ||
+    isNewChatWithoutFile;
+  const isSendButtonDisabled =
+    isFileProcessing ||
+    isBotTyping ||
+    isLoadingMessages ||
+    isNewChatWithoutFile ||
+    (!inputValue.trim() && !selectedFile);
 
   return (
     <div className="flex flex-col flex-grow min-h-0 bg-gray-800 text-gray-100">
@@ -394,6 +402,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             Error loading messages: {errorLoadingMessages}
           </div>
         )}
+
+        {/* MODIFIED: Initial prompt for new chats */}
+        {!isLoadingMessages &&
+          !errorLoadingMessages &&
+          messages.length === 0 &&
+          !activeChatIdProp && (
+            <div className="text-center text-gray-400 p-4">
+              Please upload a document to start a new chat.
+            </div>
+          )}
+
         {!isLoadingMessages &&
           !errorLoadingMessages &&
           messages.length === 0 &&
@@ -520,25 +539,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              selectedFile
-                ? `Add a message for your file ${selectedFile.name}...`
-                : activeChatIdProp // Use activeChatIdProp here
-                  ? "Type a message..."
-                  : "Type a message to start a new chat..."
+              isNewChatWithoutFile
+                ? "Upload a document to start chatting..."
+                : selectedFile
+                  ? `Add a message for your file ${selectedFile.name}...`
+                  : "Type a message..."
             }
             className="flex-grow bg-transparent text-gray-200 placeholder-gray-500 focus:outline-none px-3 py-2 resize-none overflow-hidden min-h-[40px] max-h-[200px]"
             rows={1}
-            disabled={isFileProcessing || isBotTyping || isLoadingMessages}
+            disabled={isTextareaDisabled}
           />
           <button
             type="submit"
             className="p-2 text-blue-400 hover:text-blue-300 disabled:text-gray-500 mt-1"
-            disabled={
-              isFileProcessing ||
-              isBotTyping ||
-              isLoadingMessages ||
-              (!inputValue.trim() && !selectedFile)
-            }
+            disabled={isSendButtonDisabled}
             aria-label="Send message"
           >
             <SendHorizonal size={20} />

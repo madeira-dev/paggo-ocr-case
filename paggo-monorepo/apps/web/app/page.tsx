@@ -6,8 +6,8 @@ import { Login } from "../components/Login";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import React, { useState, useEffect, useCallback } from "react";
-import { fetchUserChats, createNewChatApi } from "../lib/api"; // Import API functions
-import { ChatSummary } from "../types/chat"; // Import types
+import { fetchUserChats, createNewChatApi } from "../lib/api";
+import { ChatSummary } from "../types/chat";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -27,25 +27,20 @@ export default function HomePage() {
       try {
         const userChats = await fetchUserChats();
         setChats(userChats);
-        if (userChats.length > 0 && !activeChatId) {
-          // Optionally select the most recent chat by default
-          // setActiveChatId(userChats[0].id);
-        }
       } catch (error) {
         console.error("Error fetching user chats:", error);
         setErrorLoadingChats((error as Error).message);
         if ((error as Error).message.includes("Unauthorized")) {
-          // Handle session expiry or auth issues, e.g., redirect to login
         }
       } finally {
         setIsLoadingChats(false);
       }
     }
-  }, [status, activeChatId]); // Add activeChatId to dependencies if auto-selection logic depends on it
+  }, [status]);
 
   useEffect(() => {
     loadUserChats();
-  }, [status, loadUserChats]); // Load chats when authentication status changes
+  }, [status, loadUserChats]);
 
   const handleSelectChat = (chatId: string | null) => {
     setActiveChatId(chatId);
@@ -53,8 +48,8 @@ export default function HomePage() {
 
   const handleNewChat = async () => {
     try {
-      const newChat = await createNewChatApi("New Chat"); // Or let backend generate title
-      setChats((prevChats) => [newChat, ...prevChats]); // Add to top of the list
+      const newChat = await createNewChatApi("New Chat");
+      setChats((prevChats) => [newChat, ...prevChats]);
       setActiveChatId(newChat.id);
     } catch (error) {
       console.error("Failed to create new chat:", error);
@@ -62,11 +57,8 @@ export default function HomePage() {
     }
   };
 
-  // Callback for ChatWindow to update activeChatId when a new chat is implicitly created
   const handleChatCreated = (newChatId: string, newChatTitle?: string) => {
     setActiveChatId(newChatId);
-    // Refresh chat list to include the new chat (or add it optimistically)
-    // For simplicity, we can just add it if title is known, or reload
     if (newChatTitle) {
       setChats((prev) => [
         {
@@ -75,10 +67,10 @@ export default function HomePage() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
-        ...prev,
+        ...prev.filter((chat) => chat.id !== newChatId),
       ]);
     } else {
-      loadUserChats(); // Reload to get the new chat with its title
+      loadUserChats();
     }
   };
 
@@ -100,8 +92,14 @@ export default function HomePage() {
       router.push("/");
     };
 
+    const handleNavigateToDocuments = () => {
+      router.push("/documents");
+    };
+
+    const buttonClassName = "px-3 py-1 rounded text-sm";
+
     return (
-      <div className="flex h-screen antialiased text-gray-800 bg-gray-900">
+      <div className="flex h-screen antialiased bg-gray-900 text-gray-300">
         <Sidebar
           chats={chats}
           activeChatId={activeChatId}
@@ -113,12 +111,20 @@ export default function HomePage() {
         <main className="flex-grow flex flex-col overflow-hidden">
           <div className="p-4 bg-gray-800 text-white flex justify-between items-center border-b border-gray-700">
             <span>Welcome, {session.user.name || session.user.email}</span>
-            <button
-              onClick={handleSignOut}
-              className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm"
-            >
-              Sign Out
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleNavigateToDocuments}
+                className={`${buttonClassName} bg-blue-500 hover:bg-blue-600`}
+              >
+                Uploaded Documents
+              </button>
+              <button
+                onClick={handleSignOut}
+                className={`${buttonClassName} bg-red-500 hover:bg-red-600`}
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
           <ChatWindow
             activeChatId={activeChatId}
@@ -132,7 +138,7 @@ export default function HomePage() {
 
   return (
     <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
-      An unexpected error occurred with session status.
+      An unexpected error occurred or session status is invalid.
     </div>
   );
 }

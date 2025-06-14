@@ -32,7 +32,7 @@ export async function fetchDataFromBackend() {
 // --- New Chat API Functions ---
 
 // Helper to get headers with credentials (cookies for session auth)
-const getAuthHeaders = () => {
+export const getAuthHeaders = () => {
     return {
         'Content-Type': 'application/json',
         // Cookies are typically sent automatically by the browser for same-origin

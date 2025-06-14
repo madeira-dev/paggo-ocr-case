@@ -305,7 +305,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-800 text-gray-100">
+    <div className="flex flex-col flex-grow min-h-0 bg-gray-800 text-gray-100">
       <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-800">
         {isLoadingMessages && (
           <div className="flex justify-center items-center h-full">

@@ -110,7 +110,7 @@ export default function HomePage() {
           isLoading={isLoadingChats}
           error={errorLoadingChats}
         />
-        <main className="flex-grow flex flex-col">
+        <main className="flex-grow flex flex-col overflow-hidden">
           <div className="p-4 bg-gray-800 text-white flex justify-between items-center border-b border-gray-700">
             <span>Welcome, {session.user.name || session.user.email}</span>
             <button

@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { OpenaiModule } from './openai/openai.module';
 import { ChatModule } from './chat/chat.module';
+import { OcrModule } from './ocr/ocr.module';
 
 @Module({
     imports: [
@@ -17,6 +18,7 @@ import { ChatModule } from './chat/chat.module';
         AuthModule,
         OpenaiModule,
         ChatModule,
+        OcrModule,
     ],
     controllers: [AppController],
     providers: [AppService],

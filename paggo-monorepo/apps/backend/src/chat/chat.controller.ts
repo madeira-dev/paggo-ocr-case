@@ -9,15 +9,20 @@ export class ChatController {
     constructor(private readonly openaiService: OpenaiService) { }
 
     @Post('message')
-    @UsePipes(new ValidationPipe({ transform: true, whitelist: true })) // enables DTO validation
+    @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
     async handleChatMessage(@Body() chatMessageDto: ChatMessageDto) {
         this.logger.log(
-            `Received message: "${chatMessageDto.message}", imageUrl: "${chatMessageDto.imageUrl}"`,
+            `Received message: "${chatMessageDto.message}", fileName: "${chatMessageDto.fileName}", hasExtractedText: ${!!chatMessageDto.extractedOcrText}`,
         );
+        if (chatMessageDto.extractedOcrText) {
+            this.logger.debug(`Extracted OCR Text (snippet): "${chatMessageDto.extractedOcrText.substring(0, 100)}..."`);
+        }
+
         try {
             const botResponse = await this.openaiService.getChatCompletion(
                 chatMessageDto.message,
-                chatMessageDto.imageUrl,
+                chatMessageDto.extractedOcrText,
+                chatMessageDto.fileName,
             );
             return { response: botResponse };
         } catch (error) {
@@ -25,7 +30,7 @@ export class ChatController {
             return {
                 response:
                     'Sorry, there was an issue processing your message with the AI.',
-            }; // or throw an HttpException
+            };
         }
     }
 }

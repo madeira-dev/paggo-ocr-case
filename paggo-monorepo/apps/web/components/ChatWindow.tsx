@@ -13,6 +13,7 @@ import {
   X,
   FileText,
   Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 
 interface Message {
@@ -20,6 +21,7 @@ interface Message {
   text?: string;
   imageUrl?: string;
   sender: "user" | "bot";
+  isLoading?: boolean;
 }
 
 export const ChatWindow: React.FC = () => {
@@ -29,6 +31,7 @@ export const ChatWindow: React.FC = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isBotTyping, setIsBotTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const TEXTAREA_MAX_HEIGHT = 120;
@@ -48,132 +51,198 @@ export const ChatWindow: React.FC = () => {
     if (scrollHeight > TEXTAREA_MAX_HEIGHT) {
       event.target.style.overflowY = "auto";
     } else {
-      event.target.style.overflowY = "hidden"; // this hides the scrollbar
+      event.target.style.overflowY = "hidden"; // this hides the chat scrollbar
     }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      handleSendMessage();
+      if (!uploading && !isBotTyping) {
+        // prevent sending while bot is typing or file uploading
+        handleSendMessage();
+      }
     }
   };
 
   const handleSendMessage = async (e?: FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
-    if (!inputValue.trim() && !selectedFile) return;
+    if ((!inputValue.trim() && !selectedFile) || uploading || isBotTyping)
+      return;
 
-    setUploading(true);
-    let imageUrl: string | undefined = undefined;
+    const currentInputText = inputValue.trim();
+    const currentSelectedFile = selectedFile;
 
-    const currentInputValue = inputValue;
-    setInputValue(""); // clear the input state first
-
-    // defer the height adjustment to the next tick, allowing DOM to update
+    setInputValue("");
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    // reset textarea height
     setTimeout(() => {
       if (textareaRef.current) {
-        textareaRef.current.style.height = "inherit"; // reset to default/initial height
-        // scrollHeight should reflect the empty input value
-        const newScrollHeight = textareaRef.current.scrollHeight;
-        textareaRef.current.style.height = `${newScrollHeight}px`; // set to height of empty content
-
-        // ensure it respects maxHeight and overflow
-        if (newScrollHeight <= TEXTAREA_MAX_HEIGHT) {
-          textareaRef.current.style.overflowY = "hidden";
-        } else {
-          textareaRef.current.style.height = `${TEXTAREA_MAX_HEIGHT}px`;
-          textareaRef.current.style.overflowY = "auto";
-        }
+        textareaRef.current.style.height = "inherit";
+        textareaRef.current.style.overflowY = "hidden";
       }
     }, 0);
 
-    if (selectedFile) {
-      try {
-        const response = await fetch(
-          `/api/upload?filename=${encodeURIComponent(selectedFile.name)}`,
-          {
-            method: "POST",
-            body: selectedFile,
-          }
-        );
+    let userMessageText = currentInputText;
+    let uploadedImageUrl: string | undefined = undefined;
+    const userMessageId = Date.now().toString();
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || "Upload failed");
-        }
-
-        const newBlob = await response.json();
-        imageUrl = newBlob.url;
-        console.log("File uploaded:", newBlob);
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            id: Date.now().toString(),
-            text: currentInputValue || `Image: ${selectedFile.name}`,
-            sender: "user",
-            imageUrl,
-          },
-        ]);
-      } catch (error) {
-        console.error("Error uploading file:", error);
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            id: Date.now().toString(),
-            text: `Failed to upload ${selectedFile.name}. ${
-              currentInputValue || ""
-            }`,
-            sender: "user",
-          },
-        ]);
-      } finally {
-        setSelectedFile(null); // clear selected file
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""; // reset file input
-        }
-      }
-    } else if (currentInputValue.trim()) {
+    if (currentSelectedFile) {
+      setUploading(true);
+      // add a placeholder for the user's message with the file
       setMessages((prevMessages) => [
         ...prevMessages,
         {
-          id: Date.now().toString(),
-          text: currentInputValue,
+          id: userMessageId,
+          text: currentInputText || `Uploading ${currentSelectedFile.name}...`,
+          sender: "user",
+          imageUrl: URL.createObjectURL(currentSelectedFile), // temporary local preview
+          isLoading: true,
+        },
+      ]);
+
+      try {
+        const uploadResponse = await fetch(
+          `/api/upload?filename=${encodeURIComponent(currentSelectedFile.name)}`,
+          {
+            method: "POST",
+            body: currentSelectedFile,
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.message || "Upload failed");
+        }
+        const newBlob = await uploadResponse.json();
+        uploadedImageUrl = newBlob.url;
+        userMessageText =
+          currentInputText || `Image: ${currentSelectedFile.name}`;
+
+        // update user message with actual URL and remove loading
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === userMessageId
+              ? {
+                  ...msg,
+                  text: userMessageText,
+                  imageUrl: uploadedImageUrl,
+                  isLoading: false,
+                }
+              : msg
+          )
+        );
+      } catch (error) {
+        console.error("Error uploading file:", error);
+        setMessages((prevMessages) =>
+          prevMessages.map((msg) =>
+            msg.id === userMessageId
+              ? {
+                  ...msg,
+                  text: `Failed to upload ${currentSelectedFile.name}. ${currentInputText || ""}`,
+                  isLoading: false,
+                  imageUrl: undefined, // clear preview if upload failed
+                }
+              : msg
+          )
+        );
+        setUploading(false);
+        return; // stop if upload failed
+      } finally {
+        setUploading(false);
+      }
+    } else if (currentInputText) {
+      userMessageText = currentInputText;
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          id: userMessageId,
+          text: userMessageText,
           sender: "user",
         },
       ]);
+    } else {
+      return; // nothing to send
     }
 
-    // Simulate bot response
-    if (currentInputValue.trim() && !selectedFile) {
-      setTimeout(() => {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            id: (Date.now() + 1).toString(),
-            text: `Bot received: "${currentInputValue}"`,
-            sender: "bot",
-          },
-        ]);
-      }, 1000);
-    } else if (imageUrl) {
-      setTimeout(() => {
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          {
-            id: (Date.now() + 1).toString(),
-            text: `Bot received your image.`,
-            sender: "bot",
-          },
-        ]);
-      }, 1000);
-    }
+    // send to backend for OpenAI response
+    setIsBotTyping(true);
+    const botMessageId = (Date.now() + 1).toString();
+    // thinking bot message
+    setMessages((prev) => [
+      ...prev,
+      { id: botMessageId, sender: "bot", text: "Thinking...", isLoading: true },
+    ]);
 
-    setUploading(false);
+    try {
+      // const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // For local dev
+      const backendUrl = "http://localhost:3000";
+
+      const response = await fetch(`${backendUrl}/chat/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: userMessageText,
+          imageUrl: uploadedImageUrl, // send the Vercel Blob URL if image was uploaded
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to get response from bot");
+      }
+
+      const data = await response.json();
+      // replace thinking message with actual response
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === botMessageId
+            ? { ...msg, text: data.response, isLoading: false }
+            : msg
+        )
+      );
+    } catch (error) {
+      console.error("Error fetching bot response:", error);
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === botMessageId
+            ? {
+                ...msg,
+                text: "Sorry, I couldn't connect. Please try again.",
+                isLoading: false,
+              }
+            : msg
+        )
+      );
+    } finally {
+      setIsBotTyping(false);
+    }
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
+      // file type and size validation
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "application/pdf",
+      ];
+      if (!allowedTypes.includes(file.type)) {
+        alert(
+          "Invalid file type. Please upload an image (JPG, PNG, GIF) or PDF."
+        );
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        alert("File is too large. Maximum size is 5MB.");
+        return;
+      }
       setSelectedFile(file);
     }
   };
@@ -186,7 +255,10 @@ export const ChatWindow: React.FC = () => {
   };
 
   const triggerFileInput = () => {
-    fileInputRef.current?.click();
+    if (!uploading && !isBotTyping) {
+      // prevent opening file dialog if busy
+      fileInputRef.current?.click();
+    }
   };
 
   return (
@@ -201,15 +273,23 @@ export const ChatWindow: React.FC = () => {
             }`}
           >
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow ${
+              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow break-words ${
                 msg.sender === "user"
                   ? "bg-blue-600 text-white"
                   : "bg-gray-700 text-gray-200"
-              } break-words`}
+              }`}
             >
-              {msg.text}
+              {msg.isLoading && msg.sender === "bot" ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>{msg.text || "Thinking..."}</span>
+                </div>
+              ) : (
+                msg.text
+              )}
               {msg.imageUrl &&
-                (selectedFile?.type.startsWith("image/") ? (
+                (msg.imageUrl.startsWith("blob:") ||
+                msg.imageUrl.startsWith("http") ? ( // check if it's a blob or uploaded URL
                   <img
                     src={msg.imageUrl}
                     alt="Uploaded content"
@@ -217,23 +297,28 @@ export const ChatWindow: React.FC = () => {
                     style={{ maxHeight: "200px" }}
                   />
                 ) : (
-                  msg.imageUrl && (
-                    <a
-                      href={msg.imageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 text-blue-400 hover:text-blue-300 underline break-all"
-                    >
-                      View{" "}
-                      {msg.text?.includes("Image:")
-                        ? "uploaded file"
-                        : selectedFile?.name || "uploaded file"}
-                    </a>
-                  )
+                  // this case might not be hit if imageUrl is always a URL
+                  <a
+                    href={msg.imageUrl} // Assuming it could be a non-direct link if not blob/http
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 text-blue-400 hover:text-blue-300 underline break-all"
+                  >
+                    View uploaded file
+                  </a>
                 ))}
             </div>
           </div>
         ))}
+        {isBotTyping &&
+          !messages.find((m) => m.id.startsWith("thinking-")) && ( // fallback if thinking message isn't there
+            <div className="flex justify-start mb-4">
+              <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow bg-gray-700 text-gray-200 flex items-center space-x-2">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Bot is typing...</span>
+              </div>
+            </div>
+          )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -242,7 +327,6 @@ export const ChatWindow: React.FC = () => {
         onSubmit={handleSendMessage}
         className="p-4 border-t border-gray-700 bg-gray-900"
       >
-        {/* Selected file preview area */}
         {selectedFile && !uploading && (
           <div className="mb-2 p-3 bg-gray-700 rounded-lg flex items-center justify-between text-sm">
             <div className="flex items-center space-x-2 overflow-hidden">
@@ -263,6 +347,7 @@ export const ChatWindow: React.FC = () => {
               onClick={handleRemoveSelectedFile}
               className="p-1 text-gray-400 hover:text-gray-200"
               aria-label="Remove selected file"
+              disabled={uploading || isBotTyping}
             >
               <X size={18} />
             </button>
@@ -275,13 +360,15 @@ export const ChatWindow: React.FC = () => {
             ref={fileInputRef}
             onChange={handleFileChange}
             className="hidden"
-            accept="image/*,application/pdf"
+            accept="image/jpeg,image/png,image/gif,application/pdf"
+            disabled={uploading || isBotTyping}
           />
           <button
             type="button"
             onClick={triggerFileInput}
             className="p-2 text-gray-400 hover:text-gray-200 mt-1"
-            disabled={uploading}
+            disabled={uploading || isBotTyping}
+            aria-label="Attach file"
           >
             <Paperclip size={20} />
           </button>
@@ -292,8 +379,8 @@ export const ChatWindow: React.FC = () => {
             onKeyDown={handleKeyDown}
             placeholder={
               selectedFile
-                ? `Add a message to your file`
-                : "Type a message or upload..."
+                ? `Add a message to your file...`
+                : "Type a message or upload a file..."
             }
             className="flex-grow bg-transparent text-white placeholder-gray-500 focus:outline-none px-3 py-2 resize-none"
             rows={1}
@@ -301,18 +388,31 @@ export const ChatWindow: React.FC = () => {
               maxHeight: `${TEXTAREA_MAX_HEIGHT}px`,
               overflowY: "hidden",
             }}
-            disabled={uploading}
+            disabled={uploading || isBotTyping}
           />
           <button
             type="submit"
             className="p-2 text-blue-500 hover:text-blue-400 disabled:opacity-50 mt-1"
-            disabled={uploading || (!inputValue.trim() && !selectedFile)}
+            disabled={
+              uploading || isBotTyping || (!inputValue.trim() && !selectedFile)
+            }
+            aria-label="Send message"
           >
-            <SendHorizonal size={20} />
+            {isBotTyping || uploading ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <SendHorizonal size={20} />
+            )}
           </button>
         </div>
-        {uploading && (
-          <p className="text-xs text-yellow-400 mt-1">Uploading...</p>
+        {(uploading || isBotTyping) && (
+          <p className="text-xs text-yellow-400 mt-1 text-center">
+            {uploading
+              ? "Uploading file..."
+              : isBotTyping
+                ? "Bot is thinking..."
+                : ""}
+          </p>
         )}
       </form>
     </div>

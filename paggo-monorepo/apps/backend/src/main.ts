@@ -1,14 +1,20 @@
 console.log("[Backend] main.ts execution started"); // debug
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { MethodNotAllowedException } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common'; // Import ValidationPipe
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
+
+    app.useGlobalPipes(new ValidationPipe({ // global DTO validation
+        whitelist: true, // strips properties not defined in DTO
+        transform: true, // automatically transforms payloads to DTO instances
+    }));
+
     app.enableCors({
         origin: [
             'https://paggo-ocr-case-backend.vercel.app',
-            'http://localhost:3001' // remove this later
+            'http://localhost:3001',
         ],
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     });

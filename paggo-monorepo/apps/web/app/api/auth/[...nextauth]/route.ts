@@ -14,8 +14,8 @@ const authOptions: NextAuthOptions = {
                     throw new Error("Email and password are required");
                 }
 
-                // const backendUrl = 'http://localhost:3000'; // development
-                const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
+                const backendUrl = 'http://localhost:3000'; // development
+                // const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
                 console.log('[NextAuth Authorize] Using backend URL:', backendUrl); // debug line
 
                 try {

@@ -15,19 +15,53 @@ datasource db {
 }
 
 model User {
-    id        String    @id @default(uuid())
+    id        String    @id @default(cuid())
     email     String    @unique
-    password  String // Store hashed passwords, not plain text!
-    invoices  Invoice[]
+    name      String?
+    password  String // password hash
     createdAt DateTime  @default(now())
     updatedAt DateTime  @updatedAt
+    chats     Chat[] // relation to Chat model
+    Invoice   Invoice[]
+}
+
+model Chat {
+    id        String    @id @default(cuid())
+    title     String? // Optional: Can be auto-generated or user-set
+    userId    String
+    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    messages  Message[] // relation to Message model
+
+    @@index([userId])
+}
+
+enum MessageSender {
+    USER
+    BOT
+}
+
+model Message {
+    id        String        @id @default(cuid())
+    content   String        @db.Text // text for potentially long messages
+    sender    MessageSender
+    createdAt DateTime      @default(now())
+
+    chatId String
+    chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+    extractedOcrText String? @db.Text
+    fileName         String?
+
+    @@index([chatId])
 }
 
 model Invoice {
     id                String          @id @default(uuid())
     userId            String
     user              User            @relation(fields: [userId], references: [id])
-    originalImagePath String // Path or URL to the stored image
+    originalImagePath String // path or URL to the stored image
     uploadedAt        DateTime        @default(now())
     extractedTexts    ExtractedText[]
 }
@@ -37,7 +71,7 @@ model ExtractedText {
     invoiceId       String
     invoice         Invoice  @relation(fields: [invoiceId], references: [id])
     text            String   @db.Text // Large text field
-    llmInteractions Json? // JSON field for LLM interactions (optional)
+    llmInteractions Json? // JSON field for LLM interactions
     createdAt       DateTime @default(now())
     updatedAt       DateTime @updatedAt
 }

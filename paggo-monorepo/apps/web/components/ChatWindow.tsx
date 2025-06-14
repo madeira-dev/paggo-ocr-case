@@ -16,28 +16,43 @@ import {
   Image as ImageIcon,
   Loader2,
 } from "lucide-react";
+import { DisplayMessage, Message as BackendMessage } from "../types/chat"; // Import types
+import { fetchChatMessages, sendMessageApi } from "../lib/api"; // Import API functions
 
-interface Message {
-  id: string;
-  text: string; // user's typed text
-  sender: "user" | "bot";
-  imageUrl?: string; // AI image responses or old data
-  isLoading?: boolean;
-  attachment?: {
-    // user messages with files
-    name: string;
-    type: string;
-  };
+interface ChatWindowProps {
+  activeChatId: string | null;
+  onChatCreated: (newChatId: string, newChatTitle?: string) => void; // Callback to update parent
 }
 
-export const ChatWindow: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+// Helper to map backend message to display message
+const mapBackendMessageToDisplay = (msg: BackendMessage): DisplayMessage => ({
+  id: msg.id,
+  text: msg.content,
+  sender: msg.sender === "USER" ? "user" : "bot",
+  timestamp: msg.createdAt,
+  // Add attachment logic if needed based on fileName/extractedOcrText
+  attachment:
+    msg.fileName && msg.sender === "USER"
+      ? { name: msg.fileName, type: "" /* Determine type if possible */ }
+      : undefined,
+});
+
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+  activeChatId,
+  onChatCreated,
+}) => {
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isFileProcessing, setIsFileProcessing] = useState<boolean>(false);
   const [isBotTyping, setIsBotTyping] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [errorLoadingMessages, setErrorLoadingMessages] = useState<
+    string | null
+  >(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -54,7 +69,6 @@ export const ChatWindow: React.FC = () => {
       const scrollHeight = textareaRef.current.scrollHeight;
       textareaRef.current.style.height = `${scrollHeight}px`;
       if (scrollHeight > 200) {
-        // Max height example
         textareaRef.current.style.overflowY = "auto";
         textareaRef.current.style.height = `200px`;
       } else {
@@ -62,6 +76,29 @@ export const ChatWindow: React.FC = () => {
       }
     }
   }, [inputValue]);
+
+  // Load messages when activeChatId changes
+  useEffect(() => {
+    if (activeChatId) {
+      setIsLoadingMessages(true);
+      setErrorLoadingMessages(null);
+      setMessages([]); // Clear previous messages
+      fetchChatMessages(activeChatId)
+        .then((backendMessages) => {
+          setMessages(backendMessages.map(mapBackendMessageToDisplay));
+        })
+        .catch((err) => {
+          console.error("Error fetching messages:", err);
+          setErrorLoadingMessages((err as Error).message);
+        })
+        .finally(() => {
+          setIsLoadingMessages(false);
+        });
+    } else {
+      setMessages([]); // Clear messages if no chat is active (new chat)
+      setErrorLoadingMessages(null);
+    }
+  }, [activeChatId]);
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(event.target.value);
@@ -82,13 +119,11 @@ export const ChatWindow: React.FC = () => {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      // Max file size (e.g., 10MB)
       if (file.size > 10 * 1024 * 1024) {
         alert("File is too large. Maximum size is 10MB.");
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      // Supported file types (adjust as per your OCR backend)
       const supportedTypes = [
         "image/jpeg",
         "image/png",
@@ -108,9 +143,7 @@ export const ChatWindow: React.FC = () => {
 
   const handleRemoveSelectedFile = () => {
     setSelectedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSendMessage = async (e?: FormEvent<HTMLFormElement>) => {
@@ -119,92 +152,71 @@ export const ChatWindow: React.FC = () => {
       (!inputValue.trim() && !selectedFile) ||
       isFileProcessing ||
       isBotTyping
-    ) {
+    )
       return;
-    }
 
     const currentInputText = inputValue.trim();
     const currentSelectedFile = selectedFile;
 
     setInputValue("");
-    setSelectedFile(null); // Clear selection from UI state
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Clear the file input element
-    }
-    // Reset textarea height
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "inherit";
-        textareaRef.current.style.overflowY = "hidden";
-      }
+      if (textareaRef.current) textareaRef.current.style.height = "inherit";
     }, 0);
 
-    const userMessageId = Date.now().toString();
+    const userDisplayMessageId = `user-${Date.now()}`;
     let extractedTextForAI: string | undefined = undefined;
-    let userMessageAddedToUI = false;
+    let userMessageAttachment = currentSelectedFile
+      ? { name: currentSelectedFile.name, type: currentSelectedFile.type }
+      : undefined;
+
+    // Optimistically add user message
+    const userDisplayMessage: DisplayMessage = {
+      id: userDisplayMessageId,
+      text: currentInputText,
+      sender: "user",
+      attachment: userMessageAttachment,
+      isLoading: !!currentSelectedFile, // Show loading if file is being processed
+    };
+    setMessages((prev) => [...prev, userDisplayMessage]);
 
     if (currentSelectedFile) {
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: userMessageId,
-          text: currentInputText, // User's typed message
-          sender: "user",
-          attachment: {
-            name: currentSelectedFile.name,
-            type: currentSelectedFile.type,
-          },
-          isLoading: true, // For file processing phase
-        },
-      ]);
-      userMessageAddedToUI = true;
       setIsFileProcessing(true);
-
       try {
         const ocrFormData = new FormData();
-        ocrFormData.append("file", currentSelectedFile); // Backend expects 'file'
-
+        ocrFormData.append("file", currentSelectedFile);
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
         const ocrResponse = await fetch(`${backendUrl}/ocr/extract-text`, {
           method: "POST",
           body: ocrFormData,
+          credentials: "include", // Important for session-based auth if OCR endpoint is protected
         });
-
         if (!ocrResponse.ok) {
-          const errorData = await ocrResponse.json().catch(() => ({
-            message:
-              "OCR request failed with status: " + ocrResponse.statusText,
-          }));
+          const errorData = await ocrResponse
+            .json()
+            .catch(() => ({ message: "OCR request failed" }));
           throw new Error(
             errorData.message || `OCR failed for ${currentSelectedFile.name}`
           );
         }
         const ocrResult = await ocrResponse.json();
         extractedTextForAI = ocrResult.text;
-
-        if (
-          extractedTextForAI === undefined ||
-          extractedTextForAI === null ||
-          extractedTextForAI.trim() === ""
-        ) {
-          console.warn(
-            "OCR returned no text or failed to extract for:",
-            currentSelectedFile.name
-          );
+        if (!extractedTextForAI?.trim()) {
           extractedTextForAI = `[OCR was unable to extract text from the file: ${currentSelectedFile.name}]`;
         }
-
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.id === userMessageId ? { ...msg, isLoading: false } : msg
+        // Update user message loading state
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === userDisplayMessageId ? { ...msg, isLoading: false } : msg
           )
         );
       } catch (error) {
         console.error("Error during file processing/OCR:", error);
-        setMessages((prevMessages) =>
-          prevMessages.map((msg) =>
-            msg.id === userMessageId
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === userDisplayMessageId
               ? {
                   ...msg,
                   text: `${currentInputText} (File Error: ${(error as Error).message})`,
@@ -219,72 +231,62 @@ export const ChatWindow: React.FC = () => {
       } finally {
         setIsFileProcessing(false);
       }
-    } else if (currentInputText) {
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: userMessageId,
-          text: currentInputText,
-          sender: "user",
-        },
-      ]);
-      userMessageAddedToUI = true;
-    } else {
-      return;
-    }
-
-    if (!userMessageAddedToUI && !currentInputText && !extractedTextForAI) {
-      // Should not happen due to initial checks, but safeguard
-      return;
     }
 
     setIsBotTyping(true);
-    const botThinkingMessageId = `thinking-${Date.now()}`;
+    const botThinkingDisplayMessageId = `bot-thinking-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       {
-        id: botThinkingMessageId,
-        sender: "bot",
+        id: botThinkingDisplayMessageId,
         text: "Thinking...",
+        sender: "bot",
         isLoading: true,
       },
     ]);
 
     try {
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
       const payloadToAI = {
+        chatId: activeChatId || undefined, // Send activeChatId if exists
         message: currentInputText,
         extractedOcrText: extractedTextForAI,
         fileName: currentSelectedFile?.name,
       };
 
-      const response = await fetch(`${backendUrl}/chat/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloadToAI),
-      });
+      const apiResponse = await sendMessageApi(payloadToAI);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          message: "Failed to get response from bot: " + response.statusText,
-        }));
-        throw new Error(errorData.message || "Failed to get response from bot");
+      if (!activeChatId && apiResponse.chatId) {
+        // This was a new chat, backend created it. Inform parent.
+        // A simple title generation for optimistic update in sidebar
+        const firstUserMsgWords = currentInputText
+          .split(" ")
+          .slice(0, 5)
+          .join(" ");
+        const newChatTitle =
+          firstUserMsgWords.substring(0, 30) +
+          (currentInputText.length > 30 ? "..." : "");
+        onChatCreated(apiResponse.chatId, newChatTitle);
       }
 
-      const data = await response.json();
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg.id === botThinkingMessageId
-            ? { ...msg, text: data.response, isLoading: false }
+      // Add bot's response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botThinkingDisplayMessageId
+            ? mapBackendMessageToDisplay({
+                // Simulate a BackendMessage for mapping
+                id: `bot-${Date.now()}`,
+                content: apiResponse.response,
+                sender: "BOT",
+                createdAt: new Date().toISOString(),
+              })
             : msg
         )
       );
     } catch (error) {
       console.error("Error fetching bot response:", error);
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg.id === botThinkingMessageId
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botThinkingDisplayMessageId
             ? {
                 ...msg,
                 text: `Sorry, I couldn't connect: ${(error as Error).message}`,
@@ -299,21 +301,44 @@ export const ChatWindow: React.FC = () => {
   };
 
   const triggerFileInput = () => {
-    if (!isFileProcessing && !isBotTyping) {
-      fileInputRef.current?.click();
-    }
+    if (!isFileProcessing && !isBotTyping) fileInputRef.current?.click();
   };
 
   return (
     <div className="flex flex-col h-full bg-gray-800 text-gray-100">
-      {/* Messages area */}
       <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-800">
+        {isLoadingMessages && (
+          <div className="flex justify-center items-center h-full">
+            <Loader2 size={32} className="animate-spin text-blue-400" />
+            <span className="ml-2">Loading messages...</span>
+          </div>
+        )}
+        {errorLoadingMessages && (
+          <div className="text-center text-red-400 p-4">
+            Error loading messages: {errorLoadingMessages}
+          </div>
+        )}
+        {!isLoadingMessages &&
+          !errorLoadingMessages &&
+          messages.length === 0 &&
+          activeChatId && (
+            <div className="text-center text-gray-400 p-4">
+              No messages in this chat yet. Send one to start!
+            </div>
+          )}
+        {!isLoadingMessages &&
+          !errorLoadingMessages &&
+          messages.length === 0 &&
+          !activeChatId && (
+            <div className="text-center text-gray-400 p-4">
+              Select a chat or start a new one.
+            </div>
+          )}
+
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${
-              msg.sender === "user" ? "justify-end" : "justify-start"
-            } mb-4`}
+            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} mb-4`}
           >
             <div
               className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-3 rounded-lg shadow ${
@@ -339,7 +364,6 @@ export const ChatWindow: React.FC = () => {
                   {msg.text}
                 </span>
               )}
-
               {msg.attachment && msg.sender === "user" && (
                 <div
                   className={`mt-2 pt-2 text-xs ${msg.sender === "user" ? "border-blue-500" : "border-gray-600"}`}
@@ -356,37 +380,12 @@ export const ChatWindow: React.FC = () => {
                   </p>
                 </div>
               )}
-
-              {/* For bot image responses */}
-              {msg.imageUrl &&
-                msg.sender === "bot" &&
-                (msg.imageUrl.startsWith("blob:") ||
-                  msg.imageUrl.startsWith("http")) && (
-                  <img
-                    src={msg.imageUrl}
-                    alt="Bot content"
-                    className="mt-2 rounded-md max-w-full h-auto"
-                    style={{ maxHeight: "200px" }}
-                  />
-                )}
             </div>
           </div>
         ))}
-        {isBotTyping &&
-          !messages.find(
-            (m) => m.id.startsWith("thinking-") && m.isLoading
-          ) && ( // Fallback if thinking message isn't there or already resolved
-            <div className="flex justify-start mb-4">
-              <div className="max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow bg-gray-700 text-gray-200 flex items-center space-x-2">
-                <Loader2 size={16} className="animate-spin" />
-                <span>Bot is typing...</span>
-              </div>
-            </div>
-          )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
       <form
         onSubmit={handleSendMessage}
         className="p-4 border-t border-gray-700 bg-gray-900"
@@ -405,6 +404,7 @@ export const ChatWindow: React.FC = () => {
                 {selectedFile.name}
               </span>
               <span className="text-gray-400 flex-shrink-0">
+                {" "}
                 ({(selectedFile.size / 1024).toFixed(2)} KB)
               </span>
             </div>
@@ -419,11 +419,10 @@ export const ChatWindow: React.FC = () => {
             </button>
           </div>
         )}
-
         <div className="flex items-start bg-gray-700 rounded-lg p-2">
           <input
             type="file"
-            accept="image/*,application/pdf" // Keep this general
+            accept="image/*,application/pdf"
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: "none" }}
@@ -447,11 +446,13 @@ export const ChatWindow: React.FC = () => {
             placeholder={
               selectedFile
                 ? `Add a message for your file ${selectedFile.name}...`
-                : "Type a message or upload a file for OCR..."
+                : activeChatId
+                  ? "Type a message..."
+                  : "Type a message to start a new chat..."
             }
             className="flex-grow bg-transparent text-gray-200 placeholder-gray-500 focus:outline-none px-3 py-2 resize-none overflow-hidden min-h-[40px] max-h-[200px]"
             rows={1}
-            disabled={isFileProcessing || isBotTyping}
+            disabled={isFileProcessing || isBotTyping || isLoadingMessages}
           />
           <button
             type="submit"
@@ -459,6 +460,7 @@ export const ChatWindow: React.FC = () => {
             disabled={
               isFileProcessing ||
               isBotTyping ||
+              isLoadingMessages ||
               (!inputValue.trim() && !selectedFile)
             }
             aria-label="Send message"

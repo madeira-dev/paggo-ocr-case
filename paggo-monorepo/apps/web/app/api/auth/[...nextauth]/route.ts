@@ -1,5 +1,10 @@
 import NextAuth, { NextAuthOptions, User as NextAuthUser } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { NextRequest } from 'next/server';
+import { AsyncLocalStorage } from 'async_hooks'; // Import AsyncLocalStorage
+
+// Create an AsyncLocalStorage instance to store the NestJS Set-Cookie string
+const als = new AsyncLocalStorage<{ nestSetCookie?: string | null }>();
 
 const authOptions: NextAuthOptions = {
     providers: [
@@ -11,15 +16,15 @@ const authOptions: NextAuthOptions = {
             },
             async authorize(credentials, _req) {
                 if (!credentials?.email || !credentials?.password) {
+                    console.error('[NextAuth Authorize] Email and password are required');
                     throw new Error("Email and password are required");
                 }
 
-                const backendUrl = 'http://localhost:3000'; // development
-                // const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
-                console.log('[NextAuth Authorize] Using backend URL:', backendUrl); // debug line
+                const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
+                console.log('[NextAuth Authorize] Calling backend for login:', `${backendUrl}/auth/login`);
 
                 try {
-                    const res = await fetch(`${backendUrl}/auth/validate-credentials`, {
+                    const nestJsResponse = await fetch(`${backendUrl}/auth/login`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -30,23 +35,43 @@ const authOptions: NextAuthOptions = {
                         }),
                     });
 
-                    if (!res.ok) {
-                        return null; // Indicates failed authentication
+                    if (!nestJsResponse.ok) {
+                        const errorText = await nestJsResponse.text().catch(() => "Unknown error from backend login");
+                        console.error('[NextAuth Authorize] Backend login call failed:', nestJsResponse.status, errorText);
+                        return null;
                     }
 
-                    const user = await res.json();
+                    // Capture the Set-Cookie header from NestJS
+                    const setCookieHeader = nestJsResponse.headers.get('Set-Cookie');
+                    if (setCookieHeader) {
+                        const store = als.getStore(); // Get the current ALS store
+                        if (store) {
+                            store.nestSetCookie = setCookieHeader; // Stash the cookie string
+                            console.log('[NextAuth Authorize] Stashed NestJS Set-Cookie via ALS:', setCookieHeader);
+                        } else {
+                            // This should not happen if als.run() is used correctly in the handler
+                            console.warn('[NextAuth Authorize] AsyncLocalStorage store not found. Cannot stash Set-Cookie.');
+                        }
+                    } else {
+                        console.warn('[NextAuth Authorize] No Set-Cookie header received from NestJS backend.');
+                    }
 
-                    if (user) {
+                    const userFromBackend = await nestJsResponse.json();
+                    console.log('[NextAuth Authorize] User from backend /auth/login:', userFromBackend);
+
+                    if (userFromBackend && userFromBackend.id) {
                         return {
-                            id: user.id,
-                            email: user.email,
-                            name: user.name,
+                            id: userFromBackend.id,
+                            email: userFromBackend.email,
+                            name: userFromBackend.name,
+                            // Ensure no temporary properties are returned on the final user object for NextAuth
                         } as NextAuthUser;
                     } else {
+                        console.error('[NextAuth Authorize] User object from backend is invalid or missing id.');
                         return null;
                     }
                 } catch (error) {
-                    console.error("Error in authorize function calling backend:", error);
+                    console.error("[NextAuth Authorize] Error in authorize function calling backend /auth/login:", error);
                     return null;
                 }
             },
@@ -56,24 +81,56 @@ const authOptions: NextAuthOptions = {
         strategy: "jwt",
     },
     pages: {
-        signIn: '/',
+        signIn: '/', // Your login page
     },
     callbacks: {
         async jwt({ token, user }) {
-            if (user) { // user is only passed on initial sign in
+            if (user) { // user is the object returned by authorize
                 token.id = user.id;
             }
             return token;
         },
         async session({ session, token }) {
             if (session.user) {
-                (session.user as any).id = token.id as string; // add id to session user
+                (session.user as any).id = token.id as string;
             }
             return session;
         },
     },
 };
 
-const handler = NextAuth(authOptions);
+const baseNextAuthHandler = NextAuth(authOptions);
 
-export { handler as GET, handler as POST };
+// Custom handler function to wrap NextAuth and manage ALS context
+async function customAuthHandler(req: NextRequest, context: { params: { nextauth: string[] } }) {
+    // Initialize the ALS store for this request
+    const store = { nestSetCookie: null };
+
+    // Run the base NextAuth handler within the ALS context
+    return als.run(store, async () => {
+        const response: Response = await baseNextAuthHandler(req as any, context as any);
+
+        // After baseNextAuthHandler (and thus authorize) has run, check if a cookie was stashed
+        if (store.nestSetCookie && response.ok) {
+            console.log('[NextAuth Custom Handler] Retrieved NestJS Set-Cookie from ALS:', store.nestSetCookie);
+
+            // Clone the response to modify its headers
+            const newHeaders = new Headers(response.headers);
+            // Append the NestJS Set-Cookie header.
+            // The browser will handle parsing this string.
+            // This ensures NextAuth's own Set-Cookie headers are preserved.
+            newHeaders.append('Set-Cookie', store.nestSetCookie);
+
+            console.log('[NextAuth Custom Handler] Appending Set-Cookie to response.');
+            return new Response(response.body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: newHeaders,
+            });
+        }
+        return response;
+    });
+}
+
+// Export the custom handler for GET and POST requests
+export { customAuthHandler as GET, customAuthHandler as POST };

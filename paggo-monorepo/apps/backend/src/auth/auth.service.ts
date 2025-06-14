@@ -1,48 +1,54 @@
-import { Injectable, ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException } from '@nestjs/common'; // Add Logger
 import { PrismaService } from '../prisma/prisma.service';
-import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
-import { User } from '../../generated/prisma';
+import * as bcrypt from 'bcrypt';
+import { User } from '../../generated/prisma'; // Assuming this is your Prisma User type
 
 @Injectable()
 export class AuthService {
-    constructor(private prisma: PrismaService) { }
+    // Declare and initialize the logger
+    public readonly logger = new Logger(AuthService.name); // Make it public or provide a public log method
+
+    constructor(private readonly prisma: PrismaService) { }
 
     async signUp(createUserDto: CreateUserDto): Promise<Omit<User, 'password'>> {
-        const { email, password, name } = createUserDto;
+        this.logger.log(`Attempting to sign up user: ${createUserDto.email}`);
+        const existingUser = await this.prisma.user.findUnique({
+            where: { email: createUserDto.email },
+        });
 
-        const existingUser = await this.prisma.user.findUnique({ where: { email } });
         if (existingUser) {
-            throw new ConflictException('Email already in use');
+            this.logger.warn(`Signup attempt for existing email: ${createUserDto.email}`);
+            throw new ConflictException('User with this email already exists');
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        try {
-            const user = await this.prisma.user.create({
-                data: {
-                    email,
-                    password: hashedPassword,
-                    // name: name || email.split('@')[0], // Default name if not provided ----- deixei comentado por enquanto porque nao tem name no schema do prisma por enquanto
-                },
-            });
-            const { password: _, ...result } = user;
-            return result;
-        } catch (error) {
-            console.error("Error during sign up:", error);
-            throw new InternalServerErrorException('Could not create user due to an unexpected error.');
-        }
+        const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+        const newUser = await this.prisma.user.create({
+            data: {
+                ...createUserDto,
+                password: hashedPassword,
+            },
+        });
+        this.logger.log(`User ${newUser.email} signed up successfully.`);
+        const { password, ...result } = newUser;
+        return result;
     }
 
     async validateUserCredentials(loginUserDto: LoginUserDto): Promise<Omit<User, 'password'> | null> {
-        const { email, password } = loginUserDto;
-        const user = await this.prisma.user.findUnique({ where: { email } });
+        this.logger.log(`Attempting to validate credentials for: ${loginUserDto.email}`);
+        const user = await this.prisma.user.findUnique({
+            where: { email: loginUserDto.email },
+        });
 
-        if (user && (await bcrypt.compare(password, user.password))) {
-            const { password: _, ...result } = user;
+        if (user && (await bcrypt.compare(loginUserDto.password, user.password))) {
+            this.logger.log(`Credentials validated successfully for: ${loginUserDto.email}`);
+            const { password, ...result } = user;
             return result;
         }
-        return null; // Or throw NotFoundException / UnauthorizedException
+        this.logger.warn(`Invalid credentials attempt for: ${loginUserDto.email}`);
+        return null;
     }
+
+    // ... any other methods
 }

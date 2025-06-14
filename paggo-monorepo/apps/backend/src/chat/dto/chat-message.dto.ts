@@ -1,14 +1,20 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsNotEmpty } from 'class-validator';
 
 export class ChatMessageDto {
+    @IsOptional() // if not provided, a new chat might be initiated
     @IsString()
-    message: string; // user's message
+    @IsNotEmpty()
+    chatId?: string;
+
+    @IsString()
+    @IsNotEmpty()
+    message: string; // User's typed message
 
     @IsOptional()
     @IsString()
-    extractedOcrText?: string; // extracted text with OCR
+    extractedOcrText?: string; // Text extracted by OCR
 
     @IsOptional()
     @IsString()
-    fileName?: string; // file name
+    fileName?: string; // Original name of the uploaded file
 }

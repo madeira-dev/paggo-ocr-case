@@ -3,17 +3,21 @@ import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } 
 
 const backendProjectName = 'paggo-ocr-case-backend';
 
-/* swap the commented lines below when deploying! (related to defaultApiHost) */
+const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL; // development (comment when commiting to github...)
 
-// const defaultApiHost = 'https://paggo-ocr-case-backend.vercel.app'; // production (uncomment when commiting to github...)
-const defaultApiHost = 'http://localhost:3000'; // development (comment when commiting to github...)
+if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
+    throw new Error(
+        "CRITICAL: NEXT_PUBLIC_BACKEND_API_URL environment variable is not set or is empty."
+    );
+}
+
+const defaultApiHost = backendUrlFromEnv.replace(/\/$/, "");
 
 const apiHost = withRelatedProject({
     projectName: backendProjectName,
     defaultHost: defaultApiHost,
 });
 
-// --- Existing fetchDataFromBackend can remain if used elsewhere ---
 export async function fetchDataFromBackend() {
     try {
         console.log("apihost:", apiHost)
@@ -115,7 +119,6 @@ export async function sendMessageApi(payload: SendMessagePayload): Promise<SendM
     return response.json();
 }
 
-// ADDED: Function to fetch a compiled document
 export async function fetchCompiledDocument(chatId: string): Promise<CompiledDocumentDto> {
     const response = await fetch(`${apiHost}/chat/compiled-document/${chatId}`, {
         method: 'GET',
@@ -132,16 +135,14 @@ export async function fetchCompiledDocument(chatId: string): Promise<CompiledDoc
     return response.json();
 }
 
-// ADD THIS NEW FUNCTION
+
 export async function downloadCompiledDocument(chatId: string): Promise<void> {
-    // const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || defaultApiHost; // Use defaultApiHost directly if NEXT_PUBLIC_BACKEND_URL is not set up
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || defaultApiHost;
     const downloadUrl = `${apiHost}/chat/${chatId}/download-compiled`;
 
     try {
         const response = await fetch(downloadUrl, {
             method: 'GET',
-            // getAuthHeaders() is for JSON, not strictly needed for a GET download trigger
-            // but credentials: 'include' is vital for session cookies
             credentials: 'include',
         });
 

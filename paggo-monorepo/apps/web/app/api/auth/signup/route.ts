@@ -9,8 +9,15 @@ export async function POST(request: Request) {
             return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
         }
 
-        const backendUrl = 'http://localhost:3000'; // development
-        // const backendUrl = 'https://paggo-ocr-case-backend.vercel.app'; // deployment
+        const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
+
+        if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
+            throw new Error(
+                "CRITICAL: NEXT_PUBLIC_BACKEND_API_URL environment variable is not set or is empty."
+            );
+        }
+
+        const backendUrl = backendUrlFromEnv.replace(/\/$/, "");
 
         const res = await fetch(`${backendUrl}/auth/signup`, {
             method: 'POST',

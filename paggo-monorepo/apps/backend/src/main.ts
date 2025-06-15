@@ -9,12 +9,11 @@ console.log("[Backend] main.ts execution started"); // debug
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+    const frontendUrl = process.env.FRONTEND_URL;
     console.log(`[Backend] Configuring CORS for origin: ${frontendUrl}`);
 
     app.enableCors({
         origin: (origin, callback) => {
-            // In development, allow specific localhost origin or no origin (e.g. Postman)
             const allowedOrigins = [frontendUrl];
             if (!origin || allowedOrigins.includes(origin)) {
                 callback(null, true);
@@ -37,19 +36,14 @@ async function bootstrap() {
     console.log("[Backend] Setting up session middleware...");
     app.use(
         session({
-            secret: process.env.SESSION_SECRET || 'a_very_secure_secret_for_development_!@#$',
+            secret: process.env.SESSION_SECRET || '!@#$_a_very_secure_secret_for_development_!@#$',
             resave: false,
             saveUninitialized: false,
             cookie: {
                 secure: false, // MUST be false for HTTP localhost development
-                httpOnly: true, // Good for security (prevents client-side JS access)
-                maxAge: 24 * 60 * 60 * 1000, // 1 day
-                sameSite: 'lax', // 'lax' is usually best for session cookies.
-                // 'none' would require secure: true.
-                // path: '/', // Default is usually fine
-                // domain: 'localhost', // Usually not needed for localhost and can sometimes cause issues if misconfigured.
-                // If your backend and frontend were on different subdomains of a real domain,
-                // you might set this to '.yourdomain.com'.
+                httpOnly: true,
+                maxAge: 24 * 60 * 60 * 1000,
+                sameSite: 'lax',
             },
         }),
     );

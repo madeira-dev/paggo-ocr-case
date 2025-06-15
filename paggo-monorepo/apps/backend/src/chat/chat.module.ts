@@ -3,19 +3,17 @@ import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
-import { OpenaiModule } from '../openai/openai.module'; // Assuming this is your LLM service module
-// import { UsersModule } from '../users/users.module';
+import { OpenaiModule } from '../openai/openai.module';
 import { OcrModule } from '../ocr/ocr.module';
-import { PdfModule } from '../pdf/pdf.module'; // ADDED
+import { PdfModule } from '../pdf/pdf.module';
 
 @Module({
     imports: [
         PrismaModule,
         AuthModule,
         OpenaiModule,
-        // UsersModule,
         OcrModule,
-        PdfModule, // ADDED
+        PdfModule,
     ],
     controllers: [ChatController],
     providers: [ChatService],

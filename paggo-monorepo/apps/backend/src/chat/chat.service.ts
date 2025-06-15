@@ -232,7 +232,7 @@ export class ChatService {
         let aiResponseContent: string;
         try {
             aiResponseContent = await this.openAiService.getChatCompletion(
-                message, // This is the current user text message from chatMessageDto
+                message, // this is the current user text message from chatMessageDto
                 aiFormattedHistory,
                 savedUserMessage.extractedOcrText === null ? undefined : savedUserMessage.extractedOcrText,
                 savedUserMessage.fileName === null ? undefined : savedUserMessage.fileName,
@@ -269,15 +269,12 @@ export class ChatService {
     async createChat(userId: string, createChatDto: CreateChatDto): Promise<PrismaChat> {
         this.logger.log(`Attempting to create chat for user ${userId} with DTO: ${JSON.stringify(createChatDto)}`);
 
-        // CreateChatDto needs originalUserFileName if it's to be used for CompiledDocument.originalFileName
-        // For now, it's missing, so CompiledDocument.originalFileName will use fallbacks.
         if (!createChatDto.fileName || createChatDto.extractedOcrText === undefined) {
             this.logger.error('CreateChatDto is missing fileName or extractedOcrText. All new chats must start with a document.');
             throw new HttpException('A document (fileName and extractedOcrText) is required to create a new chat.', HttpStatus.BAD_REQUEST);
         }
 
-        // If createChatDto.originalUserFileName existed, it would be used here for title.
-        const title = this.generateChatTitle(`Document: ${createChatDto.fileName}`); // Title uses blob path if original name not in DTO
+        const title = this.generateChatTitle(`Document: ${createChatDto.fileName}`);
         const newChat = await this.prisma.chat.create({
             data: {
                 userId,
@@ -291,9 +288,8 @@ export class ChatService {
                 chatId: newChat.id,
                 content: createChatDto.initialUserMessage || `Uploaded: ${createChatDto.fileName}`,
                 sender: MessageSender.USER,
-                fileName: createChatDto.fileName, // Blob pathname
+                fileName: createChatDto.fileName,
                 extractedOcrText: createChatDto.extractedOcrText,
-                // originalUserFileName: createChatDto.originalUserFileName, // Would be set if DTO had it
             },
         });
         this.logger.log(`Created first message ${firstMessage.id} for new chat ${newChat.id}`);
@@ -372,11 +368,9 @@ export class ChatService {
                 chat: {
                     select: { userId: true },
                 },
-                sourceMessage: { // Include the sourceMessage to get its fileName
+                sourceMessage: {
                     select: {
-                        fileName: true, // This is the Vercel Blob pathname
-                        // Optionally, include contentType if you store it on the Message model
-                        // contentType: true,
+                        fileName: true,
                     },
                 },
             },
@@ -396,13 +390,11 @@ export class ChatService {
 
         if (!compiledDoc.sourceMessage || !compiledDoc.sourceMessage.fileName) {
             this.logger.error(`Source message or its fileName (blob pathname) is missing for compiled document ${compiledDoc.id}`);
-            // Depending on strictness, you might throw an error or return null/empty pathname
             throw new InternalServerErrorException('Source file information is missing for the compiled document.');
         }
 
-        // Map Prisma's ChatHistoryItem[] to ChatHistoryItemDto[]
         const chatHistoryDto = compiledDoc.chatHistoryJson
-            ? (compiledDoc.chatHistoryJson as unknown as ChatHistoryItemDto[]) // Adjust casting as per your actual JSON structure
+            ? (compiledDoc.chatHistoryJson as unknown as ChatHistoryItemDto[])
             : null;
 
 
@@ -414,8 +406,8 @@ export class ChatService {
             sourceFileBlobPathname: compiledDoc.sourceMessage.fileName,
             extractedOcrText: compiledDoc.extractedOcrText,
             chatHistoryJson: chatHistoryDto,
-            createdAt: compiledDoc.createdAt.toISOString(), // This is now correct as DTO will expect string
-            updatedAt: compiledDoc.updatedAt.toISOString(), // This is now correct as DTO will expect string
+            createdAt: compiledDoc.createdAt.toISOString(),
+            updatedAt: compiledDoc.updatedAt.toISOString(),
         };
     }
 
@@ -426,7 +418,6 @@ export class ChatService {
             where: { chatId: chatId },
             include: {
                 chat: { select: { userId: true } },
-                // sourceMessage is not strictly needed here if CompiledDocument itself has sourceFileBlobPathname
             },
         });
 

@@ -180,6 +180,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@next-auth/prisma-adapter':
+        specifier: ^1.0.7
+        version: 1.0.7(@prisma/client@6.9.0(prisma@6.9.0(typescript@5.8.2))(typescript@5.8.2))(next-auth@4.24.11(next@15.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
       '@repo/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -192,6 +195,9 @@ importers:
       '@vercel/related-projects':
         specifier: ^1.0.0
         version: 1.0.0
+      bcryptjs:
+        specifier: ^3.0.2
+        version: 3.0.2
       lucide-react:
         specifier: ^0.514.0
         version: 0.514.0(react@19.1.0)
@@ -1167,6 +1173,12 @@ packages:
       '@nestjs/platform-express':
         optional: true
 
+  '@next-auth/prisma-adapter@1.0.7':
+    resolution: {integrity: sha512-Cdko4KfcmKjsyHFrWwZ//lfLUbcLqlyFqjd/nYE2m3aZ7tjMNUjpks47iw7NTCnXf+5UWz5Ypyt1dSs1EP5QJw==}
+    peerDependencies:
+      '@prisma/client': '>=2.26.0 || >=3'
+      next-auth: ^4
+
   '@next/env@15.3.0':
     resolution: {integrity: sha512-6mDmHX24nWlHOlbwUiAOmMyY7KELimmi+ed8qWcJYjqXeC+G6JzPZ3QosOAfjNwgMIzwhXBiRiCgdh8axTTdTA==}
 
@@ -2038,6 +2050,10 @@ packages:
   bcrypt@6.0.0:
     resolution: {integrity: sha512-cU8v/EGSrnH+HnxV2z0J7/blxH8gq7Xh2JFT6Aroax7UohdmiJJlxApMxtKfuI7z68NvvVcmR78k2LbT6efhRg==}
     engines: {node: '>= 18'}
+
+  bcryptjs@3.0.2:
+    resolution: {integrity: sha512-k38b3XOZKv60C4E2hVsXTolJWfkGRMbILBIe2IBITXciy5bOsTKot5kDrf3ZfufQtQOUN5mXceUEpU1rTl9Uog==}
+    hasBin: true
 
   bin-version-check@5.1.0:
     resolution: {integrity: sha512-bYsvMqJ8yNGILLz1KP9zKLzQ6YpljV3ln1gqhuLkUtyfGi3qXKGuK2p+U4NAvjVFzDFiBBtOpCOSFNuYYEGZ5g==}
@@ -6157,6 +6173,11 @@ snapshots:
     optionalDependencies:
       '@nestjs/platform-express': 11.1.3(@nestjs/common@11.1.3(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.3)
 
+  '@next-auth/prisma-adapter@1.0.7(@prisma/client@6.9.0(prisma@6.9.0(typescript@5.8.2))(typescript@5.8.2))(next-auth@4.24.11(next@15.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0))':
+    dependencies:
+      '@prisma/client': 6.9.0(prisma@6.9.0(typescript@5.8.2))(typescript@5.8.2)
+      next-auth: 4.24.11(next@15.3.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+
   '@next/env@15.3.0': {}
 
   '@next/eslint-plugin-next@15.3.0':
@@ -7159,6 +7180,8 @@ snapshots:
     dependencies:
       node-addon-api: 8.3.1
       node-gyp-build: 4.8.4
+
+  bcryptjs@3.0.2: {}
 
   bin-version-check@5.1.0:
     dependencies:

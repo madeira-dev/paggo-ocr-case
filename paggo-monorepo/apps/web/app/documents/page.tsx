@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react"; // Added useCallback
 import { useRouter } from "next/navigation";
 import { DocumentPreviewCard } from "../../components/DocumentPreviewCard";
 import { useSession, signOut } from "next-auth/react";
-import { fetchUserChats, fetchCompiledDocument } from "../../lib/api";
+// Import downloadCompiledDocument from lib/api
+import {
+  fetchUserChats,
+  fetchCompiledDocument,
+  downloadCompiledDocument as downloadCompiledDocumentApi,
+} from "../../lib/api";
 import { ChatSummary, CompiledDocumentDto } from "../../types/chat";
 import { SessionUser } from "../../types/types";
 import { Loader2 } from "lucide-react";
@@ -23,13 +28,18 @@ export default function DocumentsPage() {
   const [isLoadingModalData, setIsLoadingModalData] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  // General download error/success message state (optional, for global feedback)
+  const [downloadStatusMessage, setDownloadStatusMessage] = useState<
+    string | null
+  >(null);
+
   useEffect(() => {
     if (status === "authenticated") {
       const loadDocuments = async () => {
         setIsLoading(true);
         setError(null);
         try {
-          const data = await fetchUserChats();
+          const data = await fetchUserChats(); // fetchUserChats returns ChatSummary[]
           setDocuments(data);
         } catch (err) {
           setError((err as Error).message);
@@ -71,6 +81,24 @@ export default function DocumentsPage() {
     router.push("/");
   };
 
+  // Handler for the download action
+  const handleDownloadDocument = useCallback(async (chatId: string) => {
+    setDownloadStatusMessage(`Preparing download for document ${chatId}...`); // Optional global feedback
+    try {
+      await downloadCompiledDocumentApi(chatId);
+      setDownloadStatusMessage(`Download started for document ${chatId}.`);
+      // Clear message after a few seconds
+      setTimeout(() => setDownloadStatusMessage(null), 3000);
+    } catch (err) {
+      console.error(`Error downloading document ${chatId}:`, err);
+      setDownloadStatusMessage(
+        `Failed to download document ${chatId}: ${(err as Error).message}`
+      );
+      // Re-throw to allow card to set its own error state
+      throw err;
+    }
+  }, []);
+
   const buttonClassName = "px-3 py-1 rounded text-sm";
 
   if (status === "loading") {
@@ -82,6 +110,7 @@ export default function DocumentsPage() {
   }
 
   if (status === "unauthenticated") {
+    // Already handled by useEffect, but good for explicit rendering
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
         Redirecting to login...
@@ -123,6 +152,15 @@ export default function DocumentsPage() {
             </div>
           </div>
 
+          {/* Optional global download status message */}
+          {downloadStatusMessage && (
+            <div
+              className={`p-2 text-center text-sm ${downloadStatusMessage.startsWith("Failed") ? "bg-red-700" : "bg-blue-700"} text-white`}
+            >
+              {downloadStatusMessage}
+            </div>
+          )}
+
           <main className="flex-grow container mx-auto px-4 py-8 overflow-y-auto">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center text-center h-full pt-10">
@@ -142,15 +180,20 @@ export default function DocumentsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                {documents.map((doc) => (
-                  <DocumentPreviewCard
-                    key={doc.id}
-                    id={doc.id}
-                    title={doc.title || "Untitled Document"}
-                    date={new Date(doc.createdAt).toLocaleDateString()}
-                    onClick={() => handlePreviewClick(doc.id)}
-                  />
-                ))}
+                {documents.map(
+                  (
+                    doc // doc is ChatSummary, doc.id is the chatId
+                  ) => (
+                    <DocumentPreviewCard
+                      key={doc.id}
+                      id={doc.id} // Pass doc.id as id (chatId)
+                      title={doc.title || "Untitled Document"}
+                      date={new Date(doc.createdAt).toLocaleDateString()}
+                      onClick={() => handlePreviewClick(doc.id)}
+                      onDownload={handleDownloadDocument} // Pass the download handler
+                    />
+                  )
+                )}
               </div>
             )}
           </main>

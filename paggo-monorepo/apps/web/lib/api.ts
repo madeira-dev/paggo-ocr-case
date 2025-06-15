@@ -90,7 +90,6 @@ export interface SendMessagePayload {
     originalUserFileName?: string; // Should be string | undefined
 }
 
-// MODIFIED: Update SendMessageResponse to match backend
 export interface SendMessageResponse {
     chatId: string;
     chatTitle?: string; // Backend returns this, make it optional
@@ -131,4 +130,61 @@ export async function fetchCompiledDocument(chatId: string): Promise<CompiledDoc
         throw new Error(errorData.message || `Failed to fetch compiled document: ${response.statusText}`);
     }
     return response.json();
+}
+
+// ADD THIS NEW FUNCTION
+export async function downloadCompiledDocument(chatId: string): Promise<void> {
+    // const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || defaultApiHost; // Use defaultApiHost directly if NEXT_PUBLIC_BACKEND_URL is not set up
+    const downloadUrl = `${apiHost}/chat/${chatId}/download-compiled`;
+
+    try {
+        const response = await fetch(downloadUrl, {
+            method: 'GET',
+            // getAuthHeaders() is for JSON, not strictly needed for a GET download trigger
+            // but credentials: 'include' is vital for session cookies
+            credentials: 'include',
+        });
+
+        if (!response.ok) {
+            let errorData;
+            try {
+                // Try to parse error from backend if it's JSON
+                errorData = await response.json();
+            } catch (e) {
+                // Fallback if error response is not JSON
+                errorData = { message: response.statusText || 'Download request failed' };
+            }
+            throw new Error(errorData.message || `Failed to download document (status: ${response.status})`);
+        }
+
+        const blob = await response.blob(); // Get the response body as a Blob
+
+        // Try to get filename from Content-Disposition header
+        const contentDisposition = response.headers.get('content-disposition');
+        let fileName = `compiled_document_${chatId}.pdf`; // Default filename
+
+        if (contentDisposition) {
+            const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+            // Check if fileNameMatch is not null and the captured group (fileNameMatch[1]) is a string
+            if (fileNameMatch && typeof fileNameMatch[1] === 'string') {
+                fileName = fileNameMatch[1];
+            }
+        }
+
+        // Create a link element, click it to trigger download, then remove it
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName; // Use the extracted or default filename
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url); // Clean up the object URL
+
+    } catch (error) {
+        console.error('Error downloading compiled document:', error);
+        // Re-throw the error so it can be caught by the calling component (e.g., DocumentPreviewCard)
+        // to display an error message to the user.
+        throw error;
+    }
 }

@@ -12,16 +12,23 @@ import { OpenaiService } from '../openai/openai.service';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import { CompiledDocumentDto, ChatHistoryItemDto } from './dto/compiled-document.dto';
-import { DocumentItemDto } from './dto/document-item.dto'; // ADDED: Import DocumentItemDto
+import { DocumentItemDto } from './dto/document-item.dto';
 import { Message as PrismaMessage, MessageSender, CompiledDocument as PrismaCompiledDocument, Chat as PrismaChat, Message } from '../../generated/prisma';
+
+export interface CompiledDocumentDownloadData {
+    originalFileName: string;
+    extractedOcrText: string;
+    chatHistoryJson: ChatHistoryItemDto[] | null;
+    sourceFileBlobPathname: string | null;
+}
 
 @Injectable()
 export class ChatService {
     private readonly logger = new Logger(ChatService.name);
 
     constructor(
-        private prisma: PrismaService,
-        private openAiService: OpenaiService,
+        private readonly prisma: PrismaService,
+        private readonly openAiService: OpenaiService,
     ) { }
 
     private generateChatTitle(firstMessageContent: string): string {
@@ -73,13 +80,13 @@ export class ChatService {
 
     private async upsertCompiledDocument(
         chatId: string,
-        sourceMessage: PrismaMessage,
+        sourceMessage: PrismaMessage, // sourceMessage should have originalUserFileName and fileName (blob path)
     ): Promise<PrismaCompiledDocument | null> {
         this.logger.log(`Attempting to upsert CompiledDocument for chat ${chatId} using source message ${sourceMessage.id}`);
 
         if (!sourceMessage.fileName || sourceMessage.extractedOcrText === null || sourceMessage.extractedOcrText === undefined) {
             this.logger.warn(
-                `Source message ${sourceMessage.id} for chat ${chatId} lacks fileName or extractedOcrText. Cannot create/update CompiledDocument.`,
+                `Source message ${sourceMessage.id} for chat ${chatId} lacks fileName (blob pathname) or extractedOcrText. Cannot create/update CompiledDocument.`,
             );
             return null;
         }
@@ -92,8 +99,9 @@ export class ChatService {
                 sender: true,
                 content: true,
                 createdAt: true,
-                fileName: true,
-                extractedOcrText: true,
+                fileName: true, // This is the blob pathname
+                originalUserFileName: true, // Ensure this is selected if needed for chatHistorySnapshot
+                // extractedOcrText: true, // Not typically part of chat history display item, but available on sourceMessage
             },
         });
 
@@ -101,7 +109,8 @@ export class ChatService {
             sender: msg.sender,
             content: msg.content,
             createdAt: msg.createdAt.toISOString(),
-            ...(msg.id === sourceMessage.id && msg.fileName && { isSourceDocument: true, fileName: msg.fileName }),
+            // Use originalUserFileName for display in history if it's the source document
+            ...(msg.id === sourceMessage.id && msg.originalUserFileName && { isSourceDocument: true, fileName: msg.originalUserFileName }),
         }));
 
         try {
@@ -110,13 +119,22 @@ export class ChatService {
                 create: {
                     chatId: chatId,
                     sourceMessageId: sourceMessage.id,
-                    originalFileName: sourceMessage.fileName,
+                    // Use originalUserFileName from the source message for the CompiledDocument's originalFileName
+                    originalFileName: sourceMessage.originalUserFileName || sourceMessage.fileName || 'Unknown Document',
                     extractedOcrText: sourceMessage.extractedOcrText,
                     chatHistoryJson: chatHistorySnapshot as any,
+                    // Populate sourceFileBlobPathname with the fileName from sourceMessage (which is the blob path)
+                    sourceFileBlobPathname: sourceMessage.fileName,
                 },
                 update: {
                     chatHistoryJson: chatHistorySnapshot as any,
                     updatedAt: new Date(),
+                    // If the source document changes, these might need updating too,
+                    // but typically CompiledDocument is tied to one initial sourceMessage.
+                    // If originalFileName or sourceFileBlobPathname could change, add them here.
+                    // For instance, if a re-upload changes the blob path for the *same* logical document:
+                    // originalFileName: sourceMessage.originalUserFileName || sourceMessage.fileName || 'Unknown Document',
+                    // sourceFileBlobPathname: sourceMessage.fileName,
                 },
             });
             this.logger.log(`Successfully upserted CompiledDocument ${compiledDoc.id} for chat ${chatId}`);
@@ -140,9 +158,9 @@ export class ChatService {
         botResponse: { id: string; content: string };
         isNewChat: boolean;
     }> {
-        const { chatId: existingChatId, message, extractedOcrText, fileName } = chatMessageDto;
+        const { chatId: existingChatId, message, extractedOcrText, fileName, originalUserFileName } = chatMessageDto; // Destructure originalUserFileName
         this.logger.log(
-            `Processing message for user ${userId}, existingChatId: ${existingChatId}, fileName: ${fileName}, message: "${message.substring(0, 30)}..."`,
+            `Processing message for user ${userId}, existingChatId: ${existingChatId}, fileName (blob path): ${fileName}, originalUserFileName: ${originalUserFileName}, message: "${message.substring(0, 30)}..."`,
         );
 
         if (!existingChatId && !fileName) {
@@ -154,7 +172,7 @@ export class ChatService {
             userId,
             existingChatId,
             message,
-            fileName,
+            originalUserFileName || fileName, // Use originalUserFileName for title generation if available
         );
 
         const savedUserMessage = await this.prisma.message.create({
@@ -163,26 +181,34 @@ export class ChatService {
                 content: message,
                 sender: MessageSender.USER,
                 extractedOcrText: extractedOcrText,
-                fileName: fileName,
+                fileName: fileName, // This is the blob pathname
+                originalUserFileName: originalUserFileName, // Save the original user file name
             },
         });
-        this.logger.log(`Saved user message ${savedUserMessage.id} for chat ${chat.id}`);
+        this.logger.log(`Saved user message ${savedUserMessage.id} (original: ${originalUserFileName}, blob: ${fileName}) for chat ${chat.id}`);
 
         let sourceMessageForCompiledDoc: PrismaMessage | null = null;
 
         if (isNewChat && savedUserMessage.fileName && savedUserMessage.extractedOcrText !== null) {
-            sourceMessageForCompiledDoc = savedUserMessage; // This is a full Message object
+            sourceMessageForCompiledDoc = savedUserMessage;
         } else if (!isNewChat) {
             const existingCompiledDoc = await this.prisma.compiledDocument.findUnique({
                 where: { chatId: chat.id },
                 include: {
-                    sourceMessage: true,
+                    sourceMessage: true, // sourceMessage will have all its fields
                 }
             });
             if (existingCompiledDoc && existingCompiledDoc.sourceMessage) {
-                sourceMessageForCompiledDoc = existingCompiledDoc.sourceMessage; // This is a full Message object
+                sourceMessageForCompiledDoc = existingCompiledDoc.sourceMessage;
             } else {
-                this.logger.warn(`CompiledDocument or its sourceMessage not found for existing chat ${chat.id}. Cannot update CompiledDocument history.`);
+                // If no compiled doc exists yet for this existing chat,
+                // and this message (savedUserMessage) contains a file and OCR text,
+                // it should become the source for a new CompiledDocument.
+                if (savedUserMessage.fileName && savedUserMessage.extractedOcrText !== null) {
+                    sourceMessageForCompiledDoc = savedUserMessage;
+                } else {
+                    this.logger.warn(`Cannot identify source message for CompiledDocument in existing chat ${chat.id}. Current message lacks file/OCR or no prior compiled doc.`);
+                }
             }
         }
 
@@ -243,12 +269,15 @@ export class ChatService {
     async createChat(userId: string, createChatDto: CreateChatDto): Promise<PrismaChat> {
         this.logger.log(`Attempting to create chat for user ${userId} with DTO: ${JSON.stringify(createChatDto)}`);
 
+        // CreateChatDto needs originalUserFileName if it's to be used for CompiledDocument.originalFileName
+        // For now, it's missing, so CompiledDocument.originalFileName will use fallbacks.
         if (!createChatDto.fileName || createChatDto.extractedOcrText === undefined) {
             this.logger.error('CreateChatDto is missing fileName or extractedOcrText. All new chats must start with a document.');
             throw new HttpException('A document (fileName and extractedOcrText) is required to create a new chat.', HttpStatus.BAD_REQUEST);
         }
 
-        const title = this.generateChatTitle(`Document: ${createChatDto.fileName}`);
+        // If createChatDto.originalUserFileName existed, it would be used here for title.
+        const title = this.generateChatTitle(`Document: ${createChatDto.fileName}`); // Title uses blob path if original name not in DTO
         const newChat = await this.prisma.chat.create({
             data: {
                 userId,
@@ -262,8 +291,9 @@ export class ChatService {
                 chatId: newChat.id,
                 content: createChatDto.initialUserMessage || `Uploaded: ${createChatDto.fileName}`,
                 sender: MessageSender.USER,
-                fileName: createChatDto.fileName,
+                fileName: createChatDto.fileName, // Blob pathname
                 extractedOcrText: createChatDto.extractedOcrText,
+                // originalUserFileName: createChatDto.originalUserFileName, // Would be set if DTO had it
             },
         });
         this.logger.log(`Created first message ${firstMessage.id} for new chat ${newChat.id}`);
@@ -386,6 +416,38 @@ export class ChatService {
             chatHistoryJson: chatHistoryDto,
             createdAt: compiledDoc.createdAt.toISOString(), // This is now correct as DTO will expect string
             updatedAt: compiledDoc.updatedAt.toISOString(), // This is now correct as DTO will expect string
+        };
+    }
+
+    async prepareDataForCompiledDocumentDownload(chatId: string, userId: string): Promise<CompiledDocumentDownloadData> {
+        this.logger.log(`Preparing compiled document for download for chat ${chatId} by user ${userId}`);
+
+        const compiledDoc = await this.prisma.compiledDocument.findUnique({
+            where: { chatId: chatId },
+            include: {
+                chat: { select: { userId: true } },
+                // sourceMessage is not strictly needed here if CompiledDocument itself has sourceFileBlobPathname
+            },
+        });
+
+        if (!compiledDoc) {
+            throw new NotFoundException(`Compiled document for chat ID ${chatId} not found.`);
+        }
+
+        if (compiledDoc.chat.userId !== userId) {
+            throw new ForbiddenException(`User ${userId} does not have access to compiled document for chat ID ${chatId}.`);
+        }
+
+        const chatHistory = compiledDoc.chatHistoryJson
+            ? (compiledDoc.chatHistoryJson as unknown as ChatHistoryItemDto[])
+            : null;
+
+        this.logger.log(`Compiled doc for download - ID: ${compiledDoc.id}, OriginalFileName: ${compiledDoc.originalFileName}, SourceFileBlobPathname: ${compiledDoc.sourceFileBlobPathname}`);
+        return {
+            originalFileName: compiledDoc.originalFileName,
+            extractedOcrText: compiledDoc.extractedOcrText,
+            chatHistoryJson: chatHistory,
+            sourceFileBlobPathname: compiledDoc.sourceFileBlobPathname,
         };
     }
 }

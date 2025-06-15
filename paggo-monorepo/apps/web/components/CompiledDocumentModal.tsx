@@ -57,9 +57,7 @@ export const CompiledDocumentModal: React.FC<CompiledDocumentModalProps> = ({
           className="border border-gray-600 rounded"
         />
       );
-    } else if (
-      ["png", "jpg", "jpeg", "gif", "webp"].includes(fileExtension || "")
-    ) {
+    } else if (["png", "jpg", "jpeg", "webp"].includes(fileExtension || "")) {
       return (
         <img
           src={fileUrl}

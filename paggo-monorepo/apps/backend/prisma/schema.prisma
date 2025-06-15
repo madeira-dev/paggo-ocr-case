@@ -52,8 +52,9 @@ model Message {
     chatId String
     chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
-    extractedOcrText String? @db.Text
-    fileName         String?
+    extractedOcrText     String? @db.Text
+    fileName             String?
+    originalUserFileName String? // user's original file name
 
     compiledDocumentAsSource CompiledDocument? @relation("SourceMessageForCompiledDoc")
 
@@ -69,8 +70,9 @@ model CompiledDocument {
     sourceMessageId String  @unique // The message that contained the original upload and OCR text
     sourceMessage   Message @relation(name: "SourceMessageForCompiledDoc", fields: [sourceMessageId], references: [id], onDelete: Cascade) // This side defines fields/references
 
-    originalFileName String // Copied from the sourceMessage
-    extractedOcrText String @db.Text // Copied from the sourceMessage
+    sourceFileBlobPathname String? // Or String if it's non-nullable and always provided
+    originalFileName       String // Copied from the sourceMessage
+    extractedOcrText       String  @db.Text // Copied from the sourceMessage
 
     chatHistoryJson Json?
 

@@ -1,15 +1,16 @@
 import { Module } from '@nestjs/common';
 import { OcrController } from './ocr.controller';
 import { OcrService } from './ocr.service';
-import { HttpModule } from '@nestjs/axios'; // Ensure HttpModule is imported
-import { ConfigModule } from '@nestjs/config'; // Ensure ConfigModule is imported (or globally available)
+import { HttpModule } from '@nestjs/axios';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
     imports: [
-        HttpModule, // Make HttpService available
-        ConfigModule, // Make ConfigService available
+        HttpModule,
+        ConfigModule,
     ],
     controllers: [OcrController],
     providers: [OcrService],
+    exports: [OcrService], // ADD THIS LINE
 })
 export class OcrModule { }

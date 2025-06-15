@@ -1,12 +1,24 @@
 import { Module } from '@nestjs/common';
 import { ChatController } from './chat.controller';
-import { OpenaiModule } from '../openai/openai.module'; // Assuming OpenaiService is exported here
-import { ChatService } from './chat.service'; // Import ChatService
-// PrismaModule is global
+import { ChatService } from './chat.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { OpenaiModule } from '../openai/openai.module'; // Assuming this is your LLM service module
+// import { UsersModule } from '../users/users.module';
+import { OcrModule } from '../ocr/ocr.module';
+import { PdfModule } from '../pdf/pdf.module'; // ADDED
 
 @Module({
-    imports: [OpenaiModule], // OpenaiService will be used by ChatController/Service
+    imports: [
+        PrismaModule,
+        AuthModule,
+        OpenaiModule,
+        // UsersModule,
+        OcrModule,
+        PdfModule, // ADDED
+    ],
     controllers: [ChatController],
-    providers: [ChatService], // Add ChatService here
+    providers: [ChatService],
+    exports: [ChatService],
 })
 export class ChatModule { }

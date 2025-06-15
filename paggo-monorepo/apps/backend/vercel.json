@@ -1,15 +1,15 @@
 {
   "version": 2,
   "functions": {
-    "dist/main.js": {
+    "/main.js": {
       "memory": 1024,
-      "maxDuration": 10
+      "maxDuration": 15
     }
   },
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "dist/main.js"
+      "dest": "/main.js"
     }
   ]
 }

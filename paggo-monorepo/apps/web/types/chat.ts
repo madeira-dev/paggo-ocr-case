@@ -39,7 +39,7 @@ export interface DisplayMessage {
 
 // ADDED: Types for the Compiled Document feature
 export interface ChatHistoryItem {
-    sender: 'USER' | 'BOT';
+    sender: 'USER' | 'BOT'; // Or use Prisma's MessageSender if shared
     content: string;
     createdAt: string; // ISO Date string
     isSourceDocument?: boolean;
@@ -51,8 +51,9 @@ export interface CompiledDocumentDto {
     chatId: string;
     sourceMessageId: string;
     originalFileName: string;
+    sourceFileBlobPathname: string; // ADDED: Ensure this matches backend DTO
     extractedOcrText: string;
-    chatHistoryJson: ChatHistoryItem[] | null;
-    createdAt: string; // Assuming ISO string from backend
-    updatedAt: string; // Assuming ISO string from backend
+    chatHistoryJson: ChatHistoryItem[] | null; // This should map to ChatHistoryItemDto from backend
+    createdAt: string;
+    updatedAt: string;
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import React from "react";
-import { X, Loader2, FileText, MessageSquare, User, Bot } from "lucide-react";
 import { CompiledDocumentDto, ChatHistoryItem } from "../types/chat";
+import { X, Loader2, FileText, ImageIcon } from "lucide-react";
 
 interface CompiledDocumentModalProps {
   isOpen: boolean;
@@ -21,125 +21,169 @@ export const CompiledDocumentModal: React.FC<CompiledDocumentModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const renderChatHistoryItem = (item: ChatHistoryItem, index: number) => {
-    const isUser = item.sender === "USER";
-    return (
-      <div
-        key={`${item.createdAt}-${index}`}
-        className={`flex mb-3 ${isUser ? "justify-end" : "justify-start"}`}
-      >
-        <div
-          className={`max-w-[85%] px-3 py-2 rounded-lg shadow ${
-            isUser ? "bg-blue-600 text-white" : "bg-gray-600 text-gray-200"
-          }`}
-        >
-          <div className="flex items-center mb-1">
-            {isUser ? (
-              <User size={16} className="mr-2 flex-shrink-0" />
-            ) : (
-              <Bot size={16} className="mr-2 flex-shrink-0" />
-            )}
-            <span className="text-xs font-semibold">
-              {isUser ? "You" : "Paggo AI"}
-            </span>
-            <span className="text-xs text-gray-400 ml-2">
-              {new Date(item.createdAt).toLocaleTimeString()}
-            </span>
-          </div>
-          {item.isSourceDocument && item.fileName && (
-            <div className="mb-1 p-2 border border-gray-500 rounded-md bg-gray-700 text-xs">
-              <p className="flex items-center">
-                <FileText size={14} className="mr-1 flex-shrink-0" />
-                Original Document: {item.fileName}
-              </p>
-            </div>
-          )}
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {item.content}
-          </p>
+  const renderFilePreview = () => {
+    if (
+      !documentData?.sourceFileBlobPathname ||
+      !documentData?.originalFileName
+    ) {
+      return (
+        <p className="text-sm text-gray-400">No file preview available.</p>
+      );
+    }
+
+    const blobBaseUrl = process.env.NEXT_PUBLIC_VERCEL_BLOB_BASE_URL;
+    if (!blobBaseUrl) {
+      console.error("NEXT_PUBLIC_VERCEL_BLOB_BASE_URL is not set.");
+      return (
+        <p className="text-sm text-red-400">
+          File preview URL cannot be constructed.
+        </p>
+      );
+    }
+
+    const fileUrl = `${blobBaseUrl.endsWith("/") ? blobBaseUrl : blobBaseUrl + "/"}${documentData.sourceFileBlobPathname}`;
+    const fileExtension = documentData.originalFileName
+      .split(".")
+      .pop()
+      ?.toLowerCase();
+
+    if (fileExtension === "pdf") {
+      return (
+        <iframe
+          src={fileUrl}
+          width="100%"
+          height="400px" // Adjust height as needed
+          title={documentData.originalFileName}
+          className="border border-gray-600 rounded"
+        />
+      );
+    } else if (
+      ["png", "jpg", "jpeg", "gif", "webp"].includes(fileExtension || "")
+    ) {
+      return (
+        <img
+          src={fileUrl}
+          alt={documentData.originalFileName}
+          className="max-w-full max-h-[400px] object-contain border border-gray-600 rounded" // Adjust styling
+        />
+      );
+    } else {
+      return (
+        <div className="text-sm text-gray-400 p-4 border border-dashed border-gray-600 rounded flex flex-col items-center justify-center h-[200px]">
+          <FileText size={32} className="mb-2" />
+          <p>Preview not available for this file type:</p>
+          <p className="font-medium">{documentData.originalFileName}</p>
         </div>
-      </div>
-    );
+      );
+    }
   };
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-in-out"
-      onClick={onClose} // Close on overlay click
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out"
+      onClick={onClose}
     >
       <div
-        className="bg-gray-800 text-gray-300 p-6 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+        className="bg-gray-800 text-gray-200 p-6 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col relative" // Increased max-w and max-h
+        onClick={(e) => e.stopPropagation()} // Prevent click inside modal from closing it
       >
-        <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-700">
-          <h2 className="text-xl font-semibold text-white">Document Preview</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-            aria-label="Close modal"
-          >
-            <X size={24} />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-100"
+          aria-label="Close modal"
+        >
+          <X size={24} />
+        </button>
+
+        <h2 className="text-2xl font-semibold mb-6 text-white border-b border-gray-700 pb-3">
+          Compiled Document
+        </h2>
 
         {isLoading && (
-          <div className="flex flex-col items-center justify-center flex-grow">
-            <Loader2 size={40} className="animate-spin text-blue-400 mb-3" />
+          <div className="flex flex-col items-center justify-center h-64">
+            <Loader2 size={32} className="animate-spin text-blue-400 mb-3" />
             <p>Loading document details...</p>
           </div>
         )}
 
         {error && !isLoading && (
-          <div className="flex flex-col items-center justify-center flex-grow text-red-400">
-            <p className="font-semibold">Error:</p>
+          <div className="text-center text-red-400 p-4 h-64 flex flex-col items-center justify-center">
+            <p className="text-lg font-medium">Error</p>
             <p>{error}</p>
           </div>
         )}
 
         {!isLoading && !error && documentData && (
-          <div className="flex-grow overflow-y-auto pr-2 space-y-6">
+          <div className="space-y-6 overflow-y-auto pr-2">
+            {" "}
+            {/* Added pr-2 for scrollbar spacing */}
             <div>
-              <h3 className="text-lg font-semibold text-white mb-1">
-                Original Document
+              <h3 className="text-lg font-medium text-blue-400 mb-1">
+                Original File
               </h3>
-              <p className="bg-gray-700 p-3 rounded-md text-sm">
-                {documentData.originalFileName}
+              <p
+                className="text-sm text-gray-400 mb-2"
+                title={documentData.originalFileName}
+              >
+                Name:{" "}
+                <span className="font-semibold text-gray-300">
+                  {documentData.originalFileName}
+                </span>
               </p>
+              {/* File Preview Section */}
+              <div className="mb-4">{renderFilePreview()}</div>
             </div>
-
             <div>
-              <h3 className="text-lg font-semibold text-white mb-1">
+              <h3 className="text-lg font-medium text-blue-400 mb-1">
                 Extracted OCR Text
               </h3>
-              <div className="bg-gray-700 p-3 rounded-md text-sm max-h-60 overflow-y-auto whitespace-pre-wrap break-words">
-                {documentData.extractedOcrText || (
-                  <span className="text-gray-400 italic">
-                    No text extracted.
-                  </span>
-                )}
-              </div>
+              <pre className="bg-gray-750 p-3 rounded text-sm whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-gray-600">
+                {documentData.extractedOcrText || "No text extracted."}
+              </pre>
             </div>
-
             <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                <MessageSquare size={20} className="inline mr-2 mb-1" />
-                Chat History
+              <h3 className="text-lg font-medium text-blue-400 mb-2">
+                Chat Interactions
               </h3>
-              <div className="bg-gray-700 p-3 rounded-md max-h-96 overflow-y-auto">
-                {documentData.chatHistoryJson &&
-                documentData.chatHistoryJson.length > 0 ? (
-                  documentData.chatHistoryJson.map(renderChatHistoryItem)
-                ) : (
-                  <p className="text-gray-400 italic text-sm">
-                    No chat history available for this document.
-                  </p>
-                )}
-              </div>
+              {documentData.chatHistoryJson &&
+              documentData.chatHistoryJson.length > 0 ? (
+                <div className="space-y-3 max-h-72 overflow-y-auto border border-gray-600 p-3 rounded bg-gray-750">
+                  {documentData.chatHistoryJson.map((item, index) => (
+                    <div
+                      key={index}
+                      className={`p-2.5 rounded-md text-sm ${
+                        item.sender === "USER"
+                          ? "bg-blue-600 bg-opacity-30 self-end"
+                          : "bg-gray-600 bg-opacity-40 self-start"
+                      }`}
+                    >
+                      <p className="font-semibold mb-0.5">
+                        {item.sender === "USER" ? "You" : "Bot"}
+                        {item.isSourceDocument && item.fileName && (
+                          <span className="text-xs text-gray-400 ml-2 italic">
+                            (Source: {item.fileName})
+                          </span>
+                        )}
+                      </p>
+                      <p className="whitespace-pre-wrap break-words">
+                        {item.content}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1 text-right">
+                        {new Date(item.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  No chat history available.
+                </p>
+              )}
             </div>
           </div>
         )}
         {!isLoading && !error && !documentData && (
-          <div className="flex flex-col items-center justify-center flex-grow">
+          <div className="text-center text-gray-400 p-4 h-64 flex flex-col items-center justify-center">
             <p>No document data to display.</p>
           </div>
         )}

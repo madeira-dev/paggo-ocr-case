@@ -4,19 +4,16 @@ import {
     HttpException,
     HttpStatus,
     NotFoundException,
+    ForbiddenException,
+    InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OpenaiService } from '../openai/openai.service';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ChatMessageDto } from './dto/chat-message.dto';
-import {
-    Chat as PrismaChat,
-    Message,
-    MessageSender,
-    CompiledDocument as PrismaCompiledDocument,
-} from '../../generated/prisma';
-import { DocumentItemDto } from './dto/document-item.dto';
-import { CompiledDocumentDto } from './dto/compiled-document.dto';
+import { CompiledDocumentDto, ChatHistoryItemDto } from './dto/compiled-document.dto';
+import { DocumentItemDto } from './dto/document-item.dto'; // ADDED: Import DocumentItemDto
+import { Message as PrismaMessage, MessageSender, CompiledDocument as PrismaCompiledDocument, Chat as PrismaChat, Message } from '../../generated/prisma';
 
 @Injectable()
 export class ChatService {
@@ -76,7 +73,7 @@ export class ChatService {
 
     private async upsertCompiledDocument(
         chatId: string,
-        sourceMessage: Message,
+        sourceMessage: PrismaMessage,
     ): Promise<PrismaCompiledDocument | null> {
         this.logger.log(`Attempting to upsert CompiledDocument for chat ${chatId} using source message ${sourceMessage.id}`);
 
@@ -171,7 +168,7 @@ export class ChatService {
         });
         this.logger.log(`Saved user message ${savedUserMessage.id} for chat ${chat.id}`);
 
-        let sourceMessageForCompiledDoc: Message | null = null;
+        let sourceMessageForCompiledDoc: PrismaMessage | null = null;
 
         if (isNewChat && savedUserMessage.fileName && savedUserMessage.extractedOcrText !== null) {
             sourceMessageForCompiledDoc = savedUserMessage; // This is a full Message object
@@ -338,44 +335,57 @@ export class ChatService {
     }
 
     async getCompiledDocumentByChatId(userId: string, chatId: string): Promise<CompiledDocumentDto | null> {
-        this.logger.log(`Fetching compiled document for chat ID ${chatId} for user ${userId}`);
-
-        const compiledDocument = await this.prisma.compiledDocument.findUnique({
-            where: {
-                chatId: chatId,
-            },
+        this.logger.log(`Fetching compiled document for chat ID: ${chatId}, user ID: ${userId}`);
+        const compiledDoc = await this.prisma.compiledDocument.findUnique({
+            where: { chatId: chatId },
             include: {
                 chat: {
+                    select: { userId: true },
+                },
+                sourceMessage: { // Include the sourceMessage to get its fileName
                     select: {
-                        userId: true,
+                        fileName: true, // This is the Vercel Blob pathname
+                        // Optionally, include contentType if you store it on the Message model
+                        // contentType: true,
                     },
                 },
             },
         });
 
-        if (!compiledDocument) {
-            this.logger.warn(`Compiled document for chat ID ${chatId} not found.`);
-            throw new NotFoundException(`Compiled document for chat ID ${chatId} not found.`);
+        if (!compiledDoc) {
+            this.logger.warn(`Compiled document not found for chat ID: ${chatId}`);
+            throw new NotFoundException('Compiled document not found.');
         }
 
-        if (compiledDocument.chat.userId !== userId) {
-            this.logger.error(`User ${userId} does not have access to compiled document for chat ID ${chatId}.`);
-            throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+        if (compiledDoc.chat.userId !== userId) {
+            this.logger.warn(
+                `User ${userId} attempted to access compiled document for chat ${chatId} belonging to another user.`,
+            );
+            throw new ForbiddenException('You do not have permission to access this document.');
         }
 
-        const chatHistory = compiledDocument.chatHistoryJson
-            ? compiledDocument.chatHistoryJson as unknown as CompiledDocumentDto['chatHistoryJson']
+        if (!compiledDoc.sourceMessage || !compiledDoc.sourceMessage.fileName) {
+            this.logger.error(`Source message or its fileName (blob pathname) is missing for compiled document ${compiledDoc.id}`);
+            // Depending on strictness, you might throw an error or return null/empty pathname
+            throw new InternalServerErrorException('Source file information is missing for the compiled document.');
+        }
+
+        // Map Prisma's ChatHistoryItem[] to ChatHistoryItemDto[]
+        const chatHistoryDto = compiledDoc.chatHistoryJson
+            ? (compiledDoc.chatHistoryJson as unknown as ChatHistoryItemDto[]) // Adjust casting as per your actual JSON structure
             : null;
 
+
         return {
-            id: compiledDocument.id,
-            chatId: compiledDocument.chatId,
-            sourceMessageId: compiledDocument.sourceMessageId,
-            originalFileName: compiledDocument.originalFileName,
-            extractedOcrText: compiledDocument.extractedOcrText,
-            chatHistoryJson: chatHistory,
-            createdAt: compiledDocument.createdAt,
-            updatedAt: compiledDocument.updatedAt,
+            id: compiledDoc.id,
+            chatId: compiledDoc.chatId,
+            sourceMessageId: compiledDoc.sourceMessageId,
+            originalFileName: compiledDoc.originalFileName,
+            sourceFileBlobPathname: compiledDoc.sourceMessage.fileName,
+            extractedOcrText: compiledDoc.extractedOcrText,
+            chatHistoryJson: chatHistoryDto,
+            createdAt: compiledDoc.createdAt.toISOString(), // This is now correct as DTO will expect string
+            updatedAt: compiledDoc.updatedAt.toISOString(), // This is now correct as DTO will expect string
         };
     }
 }

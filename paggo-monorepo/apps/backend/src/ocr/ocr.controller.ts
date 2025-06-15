@@ -1,90 +1,59 @@
 import {
     Controller,
     Post,
-    UploadedFile,
-    UseInterceptors,
+    Body,
     Logger,
+    BadRequestException,
+    InternalServerErrorException,
     HttpException,
-    HttpStatus,
-    ParseFilePipeBuilder,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { OcrService } from './ocr.service';
-import { Express } from 'express';
-import * as cuid from 'cuid'; // Import cuid
-import * as path from 'path'; // Import path
+
+// Define the expected payload structure
+interface ExtractTextPayloadDto {
+    blobPathname: string;
+    originalFileName: string;
+}
 
 @Controller('ocr')
 export class OcrController {
     private readonly logger = new Logger(OcrController.name);
+
     constructor(private readonly ocrService: OcrService) { }
 
     @Post('extract-text')
-    @UseInterceptors(FileInterceptor('file'))
-    async extractText(
-        @UploadedFile(
-            new ParseFilePipeBuilder()
-                .addFileTypeValidator({
-                    fileType: /(jpg|jpeg|png|pdf)$/i,
-                })
-                .addMaxSizeValidator({
-                    maxSize: 10 * 1024 * 1024, // 10MB limit
-                })
-                .build({
-                    exceptionFactory: (error) => {
-                        (this as any).this.logger.error(`File validation failed: ${error}`);
-                        return new HttpException(
-                            `File validation failed: ${error}. Please upload a valid image (JPG, PNG, GIF) or PDF file under 10MB.`,
-                            HttpStatus.BAD_REQUEST,
-                        );
-                    },
-                    errorHttpStatusCode: HttpStatus.BAD_REQUEST,
-                }),
-        )
-        file: Express.Multer.File,
-    ) {
+    async extractTextFromBlob( // Method name changed for clarity
+        @Body() payload: ExtractTextPayloadDto, // MODIFIED: Use @Body() to get JSON payload
+    ): Promise<{ text: string }> { // Ensure response matches frontend expectation
         this.logger.log(
-            `Received file for OCR: ${file?.originalname}, type: ${file?.mimetype}, size: ${file?.size} bytes`,
+            `Received request to extract text from blob: ${payload.blobPathname} (Original: ${payload.originalFileName})`,
         );
 
-        if (!file) {
-            this.logger.error('No file uploaded for OCR.');
-            throw new HttpException('No file uploaded', HttpStatus.BAD_REQUEST);
+        if (!payload || !payload.blobPathname || !payload.originalFileName) {
+            this.logger.error(
+                'Invalid payload for OCR extraction from blob. Missing blobPathname or originalFileName.',
+            );
+            throw new BadRequestException(
+                'Invalid payload. Missing blobPathname or originalFileName.',
+            );
         }
 
         try {
-            const extractedText = await this.ocrService.extractTextFromFile(file);
-            this.logger.log(
-                `Successfully extracted text from file: ${file.originalname}`,
+            const extractedText = await this.ocrService.extractTextFromBlob(
+                payload.blobPathname,
+                payload.originalFileName,
             );
-
-            const originalName = file.originalname;
-            const extension = path.extname(originalName);
-            const baseName = path.basename(originalName, extension);
-            const uniqueId = cuid();
-            // You can choose the format. Example: originalfilename_cuid.ext
-            const storedFileName = `${baseName}_${uniqueId}${extension}`;
-            // Or, if you prefer a completely unique name not tied to original:
-            // const storedFileName = `${uniqueId}${extension}`;
-
-
-            return {
-                text: extractedText,
-                storedFileName: storedFileName,
-                originalFileName: originalName,
-            };
+            return { text: extractedText }; // Return in the format expected by frontend
         } catch (error) {
             this.logger.error(
-                `Failed to extract text from file: ${file.originalname}`,
+                `Error in OcrController while processing blob ${payload.blobPathname}: ${(error as Error).message}`,
                 (error as Error).stack,
             );
-            // Ensure the error message from OcrService (like unsupported type) is propagated
             if (error instanceof HttpException) {
-                throw error;
+                throw error; // Re-throw if it's already an HttpException (like 400, 404, 500 from service)
             }
-            throw new HttpException(
-                (error as Error).message || 'Failed to extract text from file.',
-                HttpStatus.INTERNAL_SERVER_ERROR,
+            throw new InternalServerErrorException(
+                'An unexpected error occurred during OCR processing.',
             );
         }
     }

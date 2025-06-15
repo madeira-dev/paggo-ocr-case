@@ -1,5 +1,5 @@
 import { withRelatedProject } from '@vercel/related-projects';
-import { ChatSummary, Message } from '../types/chat'; // Import new types
+import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } from '../types/chat';
 
 const backendProjectName = 'paggo-ocr-case-backend';
 
@@ -82,16 +82,24 @@ export async function createNewChatApi(title?: string): Promise<ChatSummary> { /
     return response.json();
 }
 
-interface SendMessagePayload {
-    chatId?: string; // Optional: if not provided, backend creates a new chat
+export interface SendMessagePayload {
+    chatId?: string;
     message: string;
-    extractedOcrText?: string;
-    fileName?: string;
+    extractedOcrText?: string; // Should be string | undefined
+    fileName?: string;         // Should be string | undefined
+    originalUserFileName?: string; // Should be string | undefined
 }
 
-interface SendMessageResponse {
-    response: string; // Bot's message content
-    chatId: string;   // ID of the chat (new or existing)
+// MODIFIED: Update SendMessageResponse to match backend
+export interface SendMessageResponse {
+    chatId: string;
+    chatTitle?: string; // Backend returns this, make it optional
+    userMessage: BackendMessage; // Backend returns the saved user message
+    botResponse: {
+        id: string;
+        content: string;
+    };
+    isNewChat: boolean;
 }
 
 export async function sendMessageApi(payload: SendMessagePayload): Promise<SendMessageResponse> {
@@ -102,9 +110,25 @@ export async function sendMessageApi(payload: SendMessagePayload): Promise<SendM
         body: JSON.stringify(payload),
     });
     if (!response.ok) {
-        if (response.status === 401) throw new Error('Unauthorized');
-        const errorData = await response.json().catch(() => ({ message: "Failed to send message: " + response.statusText }));
+        const errorData = await response.json().catch(() => ({ message: 'Failed to send message' }));
         throw new Error(errorData.message || `Failed to send message: ${response.statusText}`);
+    }
+    return response.json();
+}
+
+// ADDED: Function to fetch a compiled document
+export async function fetchCompiledDocument(chatId: string): Promise<CompiledDocumentDto> {
+    const response = await fetch(`${apiHost}/chat/compiled-document/${chatId}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+    });
+    if (!response.ok) {
+        if (response.status === 401) throw new Error('Unauthorized to fetch compiled document.');
+        if (response.status === 403) throw new Error('Forbidden: You do not have access to this document.');
+        if (response.status === 404) throw new Error('Compiled document not found.');
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch compiled document' }));
+        throw new Error(errorData.message || `Failed to fetch compiled document: ${response.statusText}`);
     }
     return response.json();
 }

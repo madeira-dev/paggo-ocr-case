@@ -10,12 +10,13 @@ import { OpenaiService } from '../openai/openai.service';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { ChatMessageDto } from './dto/chat-message.dto';
 import {
-    Chat as PrismaChat, // Keep alias for Chat if used elsewhere with this name
-    Message,            // MODIFIED: Use direct Message type from @prisma/client
+    Chat as PrismaChat,
+    Message,
     MessageSender,
     CompiledDocument as PrismaCompiledDocument,
 } from '../../generated/prisma';
 import { DocumentItemDto } from './dto/document-item.dto';
+import { CompiledDocumentDto } from './dto/compiled-document.dto';
 
 @Injectable()
 export class ChatService {
@@ -75,9 +76,9 @@ export class ChatService {
 
     private async upsertCompiledDocument(
         chatId: string,
-        sourceMessage: Message, // MODIFIED: Parameter type changed to direct Message
+        sourceMessage: Message,
     ): Promise<PrismaCompiledDocument | null> {
-        this.logger.log(`Attempting to upsert CompiledDocument for chat ${chatId} using source message ${sourceMessage.id}`); // Line 102
+        this.logger.log(`Attempting to upsert CompiledDocument for chat ${chatId} using source message ${sourceMessage.id}`);
 
         if (!sourceMessage.fileName || sourceMessage.extractedOcrText === null || sourceMessage.extractedOcrText === undefined) {
             this.logger.warn(
@@ -89,7 +90,7 @@ export class ChatService {
         const messagesForHistory = await this.prisma.message.findMany({
             where: { chatId: chatId },
             orderBy: { createdAt: 'asc' },
-            select: { // MODIFIED: Ensure 'id' is selected here
+            select: {
                 id: true,
                 sender: true,
                 content: true,
@@ -170,14 +171,14 @@ export class ChatService {
         });
         this.logger.log(`Saved user message ${savedUserMessage.id} for chat ${chat.id}`);
 
-        let sourceMessageForCompiledDoc: Message | null = null; // MODIFIED: Variable type changed
+        let sourceMessageForCompiledDoc: Message | null = null;
 
         if (isNewChat && savedUserMessage.fileName && savedUserMessage.extractedOcrText !== null) {
             sourceMessageForCompiledDoc = savedUserMessage; // This is a full Message object
         } else if (!isNewChat) {
             const existingCompiledDoc = await this.prisma.compiledDocument.findUnique({
                 where: { chatId: chat.id },
-                include: { // MODIFIED: Use include to ensure full sourceMessage object
+                include: {
                     sourceMessage: true,
                 }
             });
@@ -207,7 +208,6 @@ export class ChatService {
 
         let aiResponseContent: string;
         try {
-            // MODIFIED: Convert null to undefined for extractedOcrText and fileName
             aiResponseContent = await this.openAiService.getChatCompletion(
                 message, // This is the current user text message from chatMessageDto
                 aiFormattedHistory,
@@ -243,7 +243,7 @@ export class ChatService {
         };
     }
 
-    async createChat(userId: string, createChatDto: CreateChatDto): Promise<PrismaChat> { // PrismaChat can remain if it's just for the return type here
+    async createChat(userId: string, createChatDto: CreateChatDto): Promise<PrismaChat> {
         this.logger.log(`Attempting to create chat for user ${userId} with DTO: ${JSON.stringify(createChatDto)}`);
 
         if (!createChatDto.fileName || createChatDto.extractedOcrText === undefined) {
@@ -260,7 +260,7 @@ export class ChatService {
         });
         this.logger.log(`Created new chat ${newChat.id} with title "${title}"`);
 
-        const firstMessage = await this.prisma.message.create({ // firstMessage is a full Message object
+        const firstMessage = await this.prisma.message.create({
             data: {
                 chatId: newChat.id,
                 content: createChatDto.initialUserMessage || `Uploaded: ${createChatDto.fileName}`,
@@ -271,7 +271,7 @@ export class ChatService {
         });
         this.logger.log(`Created first message ${firstMessage.id} for new chat ${newChat.id}`);
 
-        await this.upsertCompiledDocument(newChat.id, firstMessage); // Passing full Message object
+        await this.upsertCompiledDocument(newChat.id, firstMessage);
 
         return newChat;
     }
@@ -285,7 +285,7 @@ export class ChatService {
         });
     }
 
-    async getChatMessages(userId: string, chatId: string): Promise<Message[]> { // MODIFIED: Return type
+    async getChatMessages(userId: string, chatId: string): Promise<Message[]> {
         this.logger.log(`Fetching messages for chat ${chatId} for user ${userId}`);
         const chat = await this.prisma.chat.findUnique({
             where: { id: chatId, userId: userId },
@@ -295,7 +295,7 @@ export class ChatService {
             throw new NotFoundException(`Chat with ID ${chatId} not found or user does not have access.`);
         }
 
-        return this.prisma.message.findMany({ // Returns array of full Message objects
+        return this.prisma.message.findMany({
             where: { chatId: chatId },
             orderBy: { createdAt: 'asc' },
         });
@@ -335,5 +335,47 @@ export class ChatService {
             uploadDate: msg.createdAt,
             chatTitle: msg.chat?.title ?? null,
         }));
+    }
+
+    async getCompiledDocumentByChatId(userId: string, chatId: string): Promise<CompiledDocumentDto | null> {
+        this.logger.log(`Fetching compiled document for chat ID ${chatId} for user ${userId}`);
+
+        const compiledDocument = await this.prisma.compiledDocument.findUnique({
+            where: {
+                chatId: chatId,
+            },
+            include: {
+                chat: {
+                    select: {
+                        userId: true,
+                    },
+                },
+            },
+        });
+
+        if (!compiledDocument) {
+            this.logger.warn(`Compiled document for chat ID ${chatId} not found.`);
+            throw new NotFoundException(`Compiled document for chat ID ${chatId} not found.`);
+        }
+
+        if (compiledDocument.chat.userId !== userId) {
+            this.logger.error(`User ${userId} does not have access to compiled document for chat ID ${chatId}.`);
+            throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+        }
+
+        const chatHistory = compiledDocument.chatHistoryJson
+            ? compiledDocument.chatHistoryJson as unknown as CompiledDocumentDto['chatHistoryJson']
+            : null;
+
+        return {
+            id: compiledDocument.id,
+            chatId: compiledDocument.chatId,
+            sourceMessageId: compiledDocument.sourceMessageId,
+            originalFileName: compiledDocument.originalFileName,
+            extractedOcrText: compiledDocument.extractedOcrText,
+            chatHistoryJson: chatHistory,
+            createdAt: compiledDocument.createdAt,
+            updatedAt: compiledDocument.updatedAt,
+        };
     }
 }

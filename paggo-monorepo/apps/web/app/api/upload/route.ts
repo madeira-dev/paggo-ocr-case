@@ -1,4 +1,3 @@
-// filepath: /Users/madeira/paggo-ocr-case/paggo-ocr-case/paggo-monorepo/apps/web/app/api/upload/route.ts
 import { put } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import { customAlphabet } from 'nanoid';

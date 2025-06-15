@@ -1,77 +1,96 @@
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { createWorker, OEM } from 'tesseract.js';
-import * as pdfParse from 'pdf-parse'; // Import pdf-parse
-import { Express } from 'express'; // Ensure Express is imported if not already
+import {
+    Injectable,
+    Logger,
+    InternalServerErrorException,
+    BadRequestException,
+    NotFoundException,
+} from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
+import { createWorker } from 'tesseract.js';
+import pdf = require('pdf-parse'); // Using pdf-parse for PDF text extraction
+import axios from 'axios'; // For checking AxiosError type
 
 @Injectable()
 export class OcrService {
     private readonly logger = new Logger(OcrService.name);
+    private readonly vercelBlobBaseUrl: string;
 
-    async extractTextFromFile(file: Express.Multer.File): Promise<string> {
+    constructor(
+        private readonly httpService: HttpService,
+        private readonly configService: ConfigService,
+    ) {
+        this.vercelBlobBaseUrl = this.configService.get<string>('VERCEL_BLOB_BASE_URL') || '';
+        if (!this.vercelBlobBaseUrl) {
+            this.logger.warn(
+                'VERCEL_BLOB_BASE_URL is not set in OcrService. Cannot fetch files from blob.',
+            );
+        }
+    }
+
+    async extractTextFromBlob(blobPathname: string, originalFileName: string): Promise<string> {
         this.logger.log(
-            `Processing file: ${file.originalname}, type: ${file.mimetype}`,
+            `Attempting to extract text from blob: ${blobPathname} (Original: ${originalFileName})`,
         );
 
-        if (file.mimetype.startsWith('image/')) {
-            return this.extractTextFromImage(file.buffer, file.originalname);
-        } else if (file.mimetype === 'application/pdf') {
-            return this.extractTextFromPdf(file.buffer, file.originalname);
-        } else {
-            this.logger.warn(`Unsupported file type: ${file.mimetype} for file ${file.originalname}`);
-            throw new HttpException(
-                `Unsupported file type: ${file.mimetype}. Please upload an image or PDF.`,
-                HttpStatus.BAD_REQUEST,
-            );
+        if (!this.vercelBlobBaseUrl) {
+            this.logger.error('VERCEL_BLOB_BASE_URL is not configured on the server.');
+            throw new InternalServerErrorException('Blob storage URL not configured on server.');
         }
-    }
 
-    private async extractTextFromImage(imageBuffer: Buffer, fileName: string): Promise<string> {
-        this.logger.log(`Initializing Tesseract worker for image: ${fileName}`);
-        const worker = await createWorker('eng', OEM.TESSERACT_ONLY, { // Using OEM.TESSERACT_ONLY for potentially better results with Tesseract 4+
-            // logger: m => this.logger.debug(`Tesseract (${fileName}): ${m.status} (${(m.progress * 100).toFixed(2)}%)`), // Detailed progress
-        });
+        // Ensure no double slashes if vercelBlobBaseUrl already ends with one
+        const baseUrl = this.vercelBlobBaseUrl.endsWith('/')
+            ? this.vercelBlobBaseUrl
+            : `${this.vercelBlobBaseUrl}/`;
+        const fileUrl = `${baseUrl}${blobPathname}`;
+
+        this.logger.log(`Fetching file from Vercel Blob: ${fileUrl}`);
 
         try {
-            this.logger.log(`Performing OCR on image: ${fileName}`);
-            const {
-                data: { text },
-            } = await worker.recognize(imageBuffer);
-            this.logger.log(`OCR processing complete for image: ${fileName}`);
-            if (!text || text.trim() === "") {
-                this.logger.warn(`Tesseract returned empty text for image: ${fileName}`);
-                // return `[No text could be extracted from image: ${fileName}]`; // Or throw an error, or return empty string
-            }
-            return text || ""; // Return empty string if text is null/undefined
-        } catch (error) {
-            this.logger.error(`Error during Tesseract OCR for image ${fileName}:`, error);
-            throw new HttpException(
-                `Failed to extract text from image ${fileName} using OCR.`,
-                HttpStatus.INTERNAL_SERVER_ERROR,
+            const response = await firstValueFrom(
+                this.httpService.get(fileUrl, { responseType: 'arraybuffer' }),
             );
-        } finally {
-            this.logger.log(`Terminating Tesseract worker for image: ${fileName}`);
-            await worker.terminate();
-        }
-    }
+            const fileBuffer = Buffer.from(response.data);
 
-    private async extractTextFromPdf(pdfBuffer: Buffer, fileName: string): Promise<string> {
-        this.logger.log(`Extracting text from PDF: ${fileName}`);
-        try {
-            const data = await pdfParse(pdfBuffer);
-            this.logger.log(`Text extraction complete for PDF: ${fileName}`);
-            if (!data.text || data.text.trim() === "") {
-                this.logger.warn(`pdf-parse returned empty text for PDF: ${fileName}. This PDF might be image-based or have no selectable text.`);
-                // For image-based PDFs, Tesseract would be needed page by page.
-                // This current implementation only handles text-based PDFs.
-                // Consider returning a specific message or attempting image OCR if pdf-parse fails.
-                // For now, we'll return what pdf-parse gives, which might be empty.
+            this.logger.log(
+                `Successfully fetched ${blobPathname} (${fileBuffer.length} bytes). Performing OCR.`,
+            );
+
+            const fileType = originalFileName.split('.').pop()?.toLowerCase() || '';
+            let extractedText: string;
+
+            if (fileType === 'pdf') {
+                const data = await pdf(fileBuffer);
+                extractedText = data.text;
+            } else if (['png', 'jpeg', 'jpg', 'tiff', 'bmp', 'webp'].includes(fileType)) {
+                const worker = await createWorker('eng'); // Ensure 'eng.traineddata' is available
+                const { data: { text } } = await worker.recognize(fileBuffer);
+                extractedText = text;
+                await worker.terminate();
+            } else {
+                this.logger.warn(`Unsupported file type for OCR: ${fileType} for file ${originalFileName}`);
+                throw new BadRequestException(`Unsupported file type for OCR: ${fileType}`);
             }
-            return data.text || ""; // Return empty string if text is null/undefined
-        } catch (error) {
-            this.logger.error(`Error during PDF text extraction for ${fileName}:`, error);
-            throw new HttpException(
-                `Failed to extract text from PDF ${fileName}. The PDF might be corrupted or an unsupported format.`,
-                HttpStatus.INTERNAL_SERVER_ERROR,
+
+            this.logger.log(
+                `OCR successful for ${originalFileName}. Extracted text length: ${extractedText?.length || 0}`,
+            );
+            return extractedText || ""; // Return empty string if null/undefined
+        } catch (error: any) {
+            this.logger.error(
+                `Failed to fetch or OCR file ${blobPathname} from ${fileUrl}: ${error.message}`,
+                error.stack,
+            );
+            if (axios.isAxiosError(error) && error.response?.status === 404) {
+                throw new NotFoundException(`File not found at Vercel Blob: ${blobPathname}`);
+            }
+            // Check for tesseract.js specific errors if any common ones exist
+            if (error.message && error.message.includes("TesseractNotInitialized")) {
+                throw new InternalServerErrorException(`OCR engine initialization failed. Please try again or check server logs.`);
+            }
+            throw new InternalServerErrorException(
+                `Failed to process file from blob storage: ${error.message}`,
             );
         }
     }

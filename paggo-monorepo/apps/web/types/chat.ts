@@ -26,13 +26,33 @@ export interface Message {
 // Type for the ChatWindow's internal message state, mapping backend to frontend needs
 export interface DisplayMessage {
     id: string;
-    text: string; // This will be 'content' from backend
-    sender: "user" | "bot"; // Map "USER" to "user", "BOT" to "bot"
+    text: string;
+    sender: "user" | "bot";
     isLoading?: boolean;
     attachment?: {
         name: string;
         type: string;
     };
-    // Add any other fields needed for display, like timestamp
     timestamp?: string;
+    isError?: boolean; // Added from ChatWindow
+}
+
+// ADDED: Types for the Compiled Document feature
+export interface ChatHistoryItem {
+    sender: 'USER' | 'BOT';
+    content: string;
+    createdAt: string; // ISO Date string
+    isSourceDocument?: boolean;
+    fileName?: string;
+}
+
+export interface CompiledDocumentDto {
+    id: string;
+    chatId: string;
+    sourceMessageId: string;
+    originalFileName: string;
+    extractedOcrText: string;
+    chatHistoryJson: ChatHistoryItem[] | null;
+    createdAt: string; // Assuming ISO string from backend
+    updatedAt: string; // Assuming ISO string from backend
 }

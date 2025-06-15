@@ -20,7 +20,8 @@ import {
   FileText,
 } from "lucide-react";
 import { DisplayMessage, Message as BackendMessage } from "../types/chat";
-import { fetchChatMessages, getAuthHeaders } from "../lib/api";
+import { fetchChatMessages, getAuthHeaders, sendMessageApi } from "../lib/api";
+import { nanoid as cuid } from "nanoid";
 
 interface ChatWindowProps {
   activeChatId: string | null;
@@ -42,8 +43,8 @@ const mapBackendMessageToDisplay = (msg: BackendMessage): DisplayMessage => ({
 // Define an interface for the OCR result if you haven't already
 interface OcrResult {
   text: string;
-  storedFileName: string;
-  originalFileName: string;
+  // storedFileName: string; // This will now come from Vercel Blob's pathname
+  // originalFileName: string; // We'll handle this separately
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -171,10 +172,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendMessage = async (e?: FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
 
-    // MODIFIED: Prevent sending if it's a new chat and no file is selected
     if (!activeChatIdRef.current && !selectedFile) {
-      // Optionally, show an alert or a more subtle UI hint
-      // alert("Please upload a document to start a new chat.");
+      // alert("Please upload a document to start a new chat."); // Consider a toast notification
       return;
     }
 
@@ -187,47 +186,106 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     const currentInputText = inputValue.trim();
-    const currentSelectedFile = selectedFile; // Original File object
+    const currentSelectedFile = selectedFile;
+
+    // Optimistically add user message
+    const userDisplayMessageId = `user-${Date.now()}`;
+    const userMessageText =
+      currentInputText ||
+      (currentSelectedFile
+        ? `Uploaded: ${currentSelectedFile.name}`
+        : "Empty message");
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userDisplayMessageId,
+        text: userMessageText,
+        sender: "user",
+        isLoading: !!currentSelectedFile, // Show loading if there's a file to process
+        attachment: currentSelectedFile
+          ? { name: currentSelectedFile.name, type: currentSelectedFile.type }
+          : undefined,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
 
     setInputValue("");
     setSelectedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    setTimeout(() => {
-      if (textareaRef.current) textareaRef.current.style.height = "inherit";
-    }, 0);
 
-    const userDisplayMessageId = `user-${Date.now()}`;
-    let extractedTextForAI: string | undefined = undefined;
-    let fileNameForBackendDto: string | undefined = undefined; // This will be the unique storedFileName
-    let displayFileNameForUi: string | undefined = currentSelectedFile?.name; // Original name for UI
-
-    const userMessageAttachment = currentSelectedFile
-      ? { name: displayFileNameForUi!, type: currentSelectedFile.type }
-      : undefined;
-
-    // Optimistically add user message
-    const userDisplayMessage: DisplayMessage = {
-      id: userDisplayMessageId,
-      text: currentInputText,
-      sender: "user",
-      attachment: userMessageAttachment,
-      isLoading: !!currentSelectedFile, // Show loading if file is being processed
-    };
-    setMessages((prev) => [...prev, userDisplayMessage]);
+    let extractedTextForAI: string | null = null;
+    let vercelBlobPathname: string | null = null; // This will be the unique path/filename from Vercel Blob
+    let originalUserFileName: string | null = null; // The original name of the file uploaded by the user
 
     if (currentSelectedFile) {
       setIsFileProcessing(true);
+      originalUserFileName = currentSelectedFile.name;
+
       try {
-        const ocrFormData = new FormData();
-        ocrFormData.append("file", currentSelectedFile);
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-        // For FormData, Content-Type is set by the browser.
-        // credentials: "include" sends cookies if OCR endpoint is protected.
-        const ocrResponse = await fetch(`${backendUrl}/ocr/extract-text`, {
+        // Step 1: Upload to Vercel Blob via our frontend API route
+        // Generate a unique filename for Vercel Blob storage to avoid collisions
+        const fileExtension = currentSelectedFile.name.split(".").pop();
+        const uniqueBlobFileName = `${cuid()}.${fileExtension}`;
+
+        // The /api/upload route expects the file directly in the body
+        const uploadResponse = await fetch(
+          `/api/upload?filename=${encodeURIComponent(uniqueBlobFileName)}`,
+          {
+            method: "POST",
+            body: currentSelectedFile,
+            headers: {
+              "Content-Type": currentSelectedFile.type, // Important for Vercel Blob to recognize the file type
+            },
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse
+            .json()
+            .catch(() => ({ message: "File upload to Vercel Blob failed" }));
+          throw new Error(
+            errorData.message ||
+              `Upload to Vercel Blob failed for ${currentSelectedFile.name}`
+          );
+        }
+        const blobResult = await uploadResponse.json(); // Vercel Blob API response
+        // Expected blobResult: { url: string, pathname: string, contentType: string, contentDisposition: string }
+        vercelBlobPathname = blobResult.pathname; // This is the 'uniqueBlobFileName' we sent
+
+        if (!vercelBlobPathname) {
+          throw new Error("Failed to get pathname from Vercel Blob response.");
+        }
+
+        // Update UI: File uploaded, now processing OCR
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === userDisplayMessageId && msg.attachment
+              ? {
+                  ...msg,
+                  attachment: {
+                    ...msg.attachment,
+                    name: `Processing: ${originalUserFileName}`,
+                  },
+                }
+              : msg
+          )
+        );
+
+        // Step 2: Call backend OCR with the Vercel Blob pathname
+        const ocrPayload = {
+          blobPathname: vercelBlobPathname, // Send the path/key of the blob
+          originalFileName: originalUserFileName,
+          // Optionally, you could send blobResult.url if the backend prefers the full URL
+          // blobUrl: blobResult.url,
+        };
+
+        const backendOcrUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000"}/ocr/extract-text`;
+        const ocrResponse = await fetch(backendOcrUrl, {
           method: "POST",
-          body: ocrFormData,
-          credentials: "include",
+          headers: getAuthHeaders(), // This helper should set 'Content-Type': 'application/json'
+          body: JSON.stringify(ocrPayload),
+          credentials: "include", // If your OCR endpoint is protected
         });
 
         if (!ocrResponse.ok) {
@@ -235,20 +293,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             .json()
             .catch(() => ({ message: "OCR request failed" }));
           throw new Error(
-            errorData.message || `OCR failed for ${currentSelectedFile.name}`
+            errorData.message ||
+              `OCR processing failed for ${originalUserFileName}`
           );
         }
 
-        const ocrResultData: OcrResult = await ocrResponse.json();
+        // Assuming OcrResult from backend now primarily returns text,
+        // as storedFileName and originalFileName are handled/derived differently.
+        // The backend /ocr/extract-text might need to change its response structure.
+        // For now, let's assume it returns at least { text: string }
+        const ocrResultData = (await ocrResponse.json()) as { text: string }; // Adjust type as needed
         extractedTextForAI = ocrResultData.text;
-        fileNameForBackendDto = ocrResultData.storedFileName;
-        displayFileNameForUi = ocrResultData.originalFileName;
 
-        if (!extractedTextForAI?.trim()) {
-          extractedTextForAI = `[OCR was unable to extract text from the file: ${displayFileNameForUi}]`;
+        if (!extractedTextForAI?.trim() && originalUserFileName) {
+          extractedTextForAI = `[OCR was unable to extract text from the file: ${originalUserFileName}]`;
         }
 
-        // Update user message with final attachment name and turn off loading
+        // Update user message: File processing complete
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === userDisplayMessageId
@@ -256,29 +317,52 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   ...msg,
                   isLoading: false,
                   attachment: msg.attachment
-                    ? { ...msg.attachment, name: displayFileNameForUi! }
+                    ? { ...msg.attachment, name: originalUserFileName! } // Show original name after processing
                     : undefined,
                 }
               : msg
           )
         );
       } catch (error) {
-        console.error("Error during file processing/OCR:", error);
+        console.error("Error during file processing (upload or OCR):", error);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === userDisplayMessageId
               ? {
                   ...msg,
-                  text: `${currentInputText} (File Error: ${(error as Error).message})`,
+                  text: `${userMessageText} (File Error: ${(error as Error).message})`,
                   isLoading: false,
-                  attachment: undefined,
+                  isError: true,
+                  attachment: msg.attachment
+                    ? {
+                        ...msg.attachment,
+                        name: originalUserFileName || "File error",
+                      }
+                    : undefined,
                 }
               : msg
           )
         );
         setIsFileProcessing(false);
-        return;
+        return; // Stop further processing
+      } finally {
+        setIsFileProcessing(false);
       }
+    } // End of file processing block
+
+    // If no text input and no file was successfully processed, do nothing further
+    if (!currentInputText && !vercelBlobPathname) {
+      // If the user message was only for a file and it failed, it's already updated with an error.
+      // If it was an empty message attempt, just return.
+      if (
+        messages.find((m) => m.id === userDisplayMessageId)?.text ===
+        "Empty message"
+      ) {
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== userDisplayMessageId)
+        ); // Remove "Empty message"
+      }
+      return;
     }
 
     setIsBotTyping(true);
@@ -290,83 +374,69 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         text: "Thinking...",
         sender: "bot",
         isLoading: true,
+        timestamp: new Date().toISOString(),
       },
     ]);
 
     try {
-      const chatIdForPayload = activeChatIdRef.current;
+      const chatIdForPayload =
+        activeChatIdRef.current === null ? undefined : activeChatIdRef.current;
 
       const payloadToAI = {
         chatId: chatIdForPayload,
         message: currentInputText,
-        extractedOcrText: extractedTextForAI,
-        fileName: fileNameForBackendDto,
+        extractedOcrText:
+          extractedTextForAI === null ? undefined : extractedTextForAI, // Line 394 fix
+        fileName: vercelBlobPathname === null ? undefined : vercelBlobPathname, // Consistent handling
+        originalUserFileName:
+          originalUserFileName === null ? undefined : originalUserFileName, // Consistent handling
       };
 
-      const backendUrl =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-      const response = await fetch(`${backendUrl}/chat/message`, {
-        method: "POST",
-        // MODIFIED: Use getAuthHeaders() from lib/api.ts
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payloadToAI),
-        credentials: "include",
-      });
+      const responseData = await sendMessageApi(payloadToAI);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({
-          message: "Failed to send message or get AI response",
-        }));
-        throw new Error(
-          errorData.message || `Server error: ${response.status}`
-        );
-      }
-
-      const result = await response.json();
-
-      const newChatId = result.chatId;
-      const botMessageContent = result.botResponse.content;
-
-      if (newChatId && newChatId !== activeChatIdRef.current) {
+      if (!activeChatIdRef.current && responseData.chatId) {
         if (onChatCreated) {
-          onChatCreated(newChatId, result.chatTitle || "New Chat");
+          // Line 402 fixed: responseData.chatTitle is now available
+          onChatCreated(
+            responseData.chatId,
+            responseData.chatTitle || "New Chat"
+          );
         }
-        activeChatIdRef.current = newChatId;
-      } else if (!activeChatIdRef.current && newChatId) {
-        if (onChatCreated) {
-          onChatCreated(newChatId, result.chatTitle || "New Chat");
-        }
-        activeChatIdRef.current = newChatId;
+        const newUrl = `/?chatId=${responseData.chatId}`;
+        window.history.pushState({ path: newUrl }, "", newUrl);
       }
 
       setMessages((prev) =>
-        prev
-          .filter((msg) => msg.id !== botThinkingDisplayMessageId)
-          .concat({
-            id: result.botResponse.id || `bot-${Date.now()}`,
-            text: botMessageContent,
-            sender: "bot",
-          })
+        prev.map((msg) =>
+          msg.id === botThinkingDisplayMessageId
+            ? {
+                ...msg,
+                // Line 422 & 423 fixed: responseData.botResponse is now available
+                id: responseData.botResponse.id,
+                text: responseData.botResponse.content,
+                sender: "bot",
+                isLoading: false,
+              }
+            : msg
+        )
       );
     } catch (error) {
-      console.error("Error sending message or getting AI response:", error);
-      setMessages((prev) => {
-        const filteredPrev = prev.filter(
-          (msg) => msg.id !== botThinkingDisplayMessageId
-        );
-        return [
-          ...filteredPrev,
-          {
-            id: `error-${Date.now()}`,
-            text: `Sorry, I couldn't connect: ${(error as Error).message}`,
-            sender: "bot",
-            isError: true,
-          },
-        ];
-      });
+      console.error("Error sending message to backend:", error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botThinkingDisplayMessageId
+            ? {
+                ...msg,
+                text: `Error: ${(error as Error).message}`,
+                sender: "bot",
+                isLoading: false,
+                isError: true,
+              }
+            : msg
+        )
+      );
     } finally {
       setIsBotTyping(false);
-      if (currentSelectedFile) setIsFileProcessing(false);
     }
   };
 

@@ -18,9 +18,8 @@ import { ChatMessageDto } from './dto/chat-message.dto';
 import { ChatService } from './chat.service';
 import { CreateChatDto } from './dto/create-chat.dto';
 import { DocumentItemDto } from './dto/document-item.dto';
-// MessageSender might not be directly needed here anymore if ChatService handles it
-// import { MessageSender } from '../../generated/prisma';
-import { AuthenticatedGuard } from '../auth/authenticated.guard'; // Import the new guard
+import { AuthenticatedGuard } from '../auth/authenticated.guard';
+import { CompiledDocumentDto } from './dto/compiled-document.dto'; // ADDED: Import CompiledDocumentDto
 
 // This interface might not be needed if history is handled by ChatService
 // interface ChatHistoryMessage {
@@ -103,5 +102,35 @@ export class ChatController {
         const userId = this.getUserIdFromRequest(req);
         this.logger.log(`Fetching messages for chat ${chatId} for user ${userId}`);
         return this.chatService.getChatMessages(userId, chatId);
+    }
+
+    @UseGuards(AuthenticatedGuard)
+    @Get('compiled-document/:chatId')
+    async getCompiledDocument(
+        @Param('chatId') chatId: string,
+        @Req() req: any,
+    ): Promise<CompiledDocumentDto | null> { // Return type is CompiledDocumentDto or null
+        const userId = this.getUserIdFromRequest(req);
+        this.logger.log(`User ${userId} requesting compiled document for chat ID: ${chatId}`);
+        try {
+            const compiledDoc = await this.chatService.getCompiledDocumentByChatId(userId, chatId);
+            if (!compiledDoc) {
+                // This case is handled by NotFoundException in service, but good to be aware
+                throw new HttpException('Compiled document not found.', HttpStatus.NOT_FOUND);
+            }
+            return compiledDoc;
+        } catch (error) {
+            this.logger.error(
+                `Error fetching compiled document for chat ID ${chatId}, user ${userId}: ${(error as Error).message}`,
+                (error as Error).stack,
+            );
+            if (error instanceof HttpException) {
+                throw error; // Re-throw if it's already an HttpException (like 403 Forbidden or 404 Not Found from service)
+            }
+            throw new HttpException(
+                'An unexpected error occurred while fetching the compiled document.',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
     }
 }

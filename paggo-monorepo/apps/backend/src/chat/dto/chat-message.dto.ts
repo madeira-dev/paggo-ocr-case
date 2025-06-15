@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsNotEmpty } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty } from 'class-validator';
 
 export class ChatMessageDto {
     @IsOptional() // if not provided, a new chat might be initiated
@@ -16,5 +16,9 @@ export class ChatMessageDto {
 
     @IsOptional()
     @IsString()
-    fileName?: string; // Original name of the uploaded file
+    fileName?: string; // This should ideally be the Vercel Blob pathname/URL
+
+    @IsOptional()
+    @IsString()
+    originalUserFileName?: string; // The original name of the file uploaded by the user
 }

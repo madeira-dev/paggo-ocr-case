@@ -40,21 +40,9 @@ export class AuthController {
                 // If req.login is successful, express-session middleware will handle
                 // sending the Set-Cookie header for connect.sid.
                 console.log(`[Backend /auth/login] User ${user.email} successfully logged in via req.login(). Session created/updated.`);
-                // Since the 'user' object (as returned by validateUserCredentials)
-                // already lacks the 'password' property, we don't need to destructure it out.
-                // 'userInfo' is simply the 'user' object itself.
                 const userInfo = user;
                 return resolve(userInfo);
             });
         });
-    }
-
-    @Get('test-cookie')
-    testCookie(@Req() req: Request, @Res({ passthrough: true }) response: Response) {
-        // Setting any data on req.session will trigger express-session
-        // to save the session and send the Set-Cookie header.
-        req.session.testData = `hello world at ${new Date().toISOString()}`;
-        this.authService.logger.log(`[Backend /auth/test-cookie] Test data set in session for request. Session ID: ${req.sessionID}. Cookie should be set.`);
-        response.status(HttpStatus.OK).send({ message: 'Session data set, check your browser cookies for connect.sid on localhost:3000' });
     }
 }

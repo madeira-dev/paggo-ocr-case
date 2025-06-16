@@ -3,7 +3,7 @@ import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } 
 import { getSession } from 'next-auth/react'; // Import getSession
 
 const backendProjectName = 'help-nestjs-vercel';
-const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
+const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
     throw new Error(

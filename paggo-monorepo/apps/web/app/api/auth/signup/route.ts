@@ -9,7 +9,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
         }
 
-        const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
+        const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_URL;
 
         if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
             throw new Error(

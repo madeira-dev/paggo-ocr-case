@@ -38,7 +38,7 @@ const authOptions: NextAuthOptions = {
                 if (!credentials?.email || !credentials?.password) {
                     return null;
                 }
-                const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
+                const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_URL;
 
                 if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
                     throw new Error(

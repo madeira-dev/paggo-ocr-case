@@ -45,7 +45,7 @@ const authOptions: NextAuthOptions = {
                 const backendUrl = backendUrlFromEnv.replace(/\/$/, "");
 
                 try {
-                    const res = await fetch(`${backendUrl}/auth/validate-credentials`, {
+                    const res = await fetch(`${backendUrl}/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({

@@ -34,14 +34,14 @@ export interface DisplayMessage {
         type: string;
     };
     timestamp?: string;
-    isError?: boolean; // Added from ChatWindow
+    isError?: boolean;
 }
 
-// ADDED: Types for the Compiled Document feature
+
 export interface ChatHistoryItem {
-    sender: 'USER' | 'BOT'; // Or use Prisma's MessageSender if shared
+    sender: 'USER' | 'BOT';
     content: string;
-    createdAt: string; // ISO Date string
+    createdAt: string;
     isSourceDocument?: boolean;
     fileName?: string;
 }

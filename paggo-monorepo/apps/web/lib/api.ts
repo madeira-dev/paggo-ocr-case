@@ -1,8 +1,8 @@
 import { withRelatedProject } from '@vercel/related-projects';
 import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } from '../types/chat';
+import { getSession } from 'next-auth/react'; // Import getSession
 
 const backendProjectName = 'help-nestjs-vercel';
-
 const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
 
 if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
@@ -12,26 +12,34 @@ if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
 }
 
 const defaultApiHost = backendUrlFromEnv.replace(/\/$/, "");
-
 const apiHost = withRelatedProject({
     projectName: backendProjectName,
     defaultHost: defaultApiHost,
 });
 
-export async function fetchDataFromBackend() {
-    try {
-        console.log("apihost:", apiHost)
-        const response = await fetch(`${apiHost}/hello`);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error fetching data from backend:', error);
-        throw error;
+export const getAuthHeadersWithToken = async () => {
+    const session = await getSession(); // Get NextAuth session client-side or server-side if applicable
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (session?.accessToken) {
+        headers['Authorization'] = `Bearer ${session.accessToken}`;
     }
-}
+    return headers;
+};
+
+// export async function fetchDataFromBackend() {
+//     try {
+//         console.log("apihost:", apiHost)
+//         const response = await fetch(`${apiHost}/hello`);
+//         if (!response.ok) {
+//             throw new Error(`HTTP error! status: ${response.status}`);
+//         }
+//         const data = await response.json();
+//         return data;
+//     } catch (error) {
+//         console.error('Error fetching data from backend:', error);
+//         throw error;
+//     }
+// }
 
 // --- New Chat API Functions ---
 
@@ -47,41 +55,43 @@ export const getAuthHeaders = () => {
 export async function fetchUserChats(): Promise<ChatSummary[]> {
     const response = await fetch(`${apiHost}/chat/list`, {
         method: 'GET',
-        headers: getAuthHeaders(),
-        credentials: 'include', // Important for sending session cookies
+        headers: await getAuthHeadersWithToken(),
+        // credentials: 'include', // No longer strictly needed for JWT auth, but doesn't hurt
     });
     if (!response.ok) {
         if (response.status === 401) throw new Error('Unauthorized: Please log in.');
-        throw new Error(`Failed to fetch chats: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to fetch chats: ${response.statusText}`);
     }
     return response.json();
 }
 
+
 export async function fetchChatMessages(chatId: string): Promise<Message[]> {
     const response = await fetch(`${apiHost}/chat/${chatId}/messages`, {
         method: 'GET',
-        headers: getAuthHeaders(),
-        credentials: 'include',
+        headers: await getAuthHeadersWithToken(),
     });
     if (!response.ok) {
         if (response.status === 401) throw new Error('Unauthorized');
         if (response.status === 403) throw new Error('Forbidden');
         if (response.status === 404) throw new Error('Chat not found');
-        throw new Error(`Failed to fetch messages for chat ${chatId}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to fetch messages for chat ${chatId}: ${response.statusText}`);
     }
     return response.json();
 }
 
-export async function createNewChatApi(title?: string): Promise<ChatSummary> { // Backend returns full chat, let's assume summary for now
+export async function createNewChatApi(title?: string): Promise<ChatSummary> {
     const response = await fetch(`${apiHost}/chat/new`, {
         method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include',
+        headers: await getAuthHeadersWithToken(),
         body: JSON.stringify({ title: title || "New Chat" }),
     });
     if (!response.ok) {
         if (response.status === 401) throw new Error('Unauthorized');
-        throw new Error(`Failed to create new chat: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Failed to create new chat: ${response.statusText}`);
     }
     return response.json();
 }
@@ -108,8 +118,7 @@ export interface SendMessageResponse {
 export async function sendMessageApi(payload: SendMessagePayload): Promise<SendMessageResponse> {
     const response = await fetch(`${apiHost}/chat/message`, {
         method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include',
+        headers: await getAuthHeadersWithToken(),
         body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -122,8 +131,7 @@ export async function sendMessageApi(payload: SendMessagePayload): Promise<SendM
 export async function fetchCompiledDocument(chatId: string): Promise<CompiledDocumentDto> {
     const response = await fetch(`${apiHost}/chat/compiled-document/${chatId}`, {
         method: 'GET',
-        headers: getAuthHeaders(),
-        credentials: 'include',
+        headers: await getAuthHeadersWithToken(),
     });
     if (!response.ok) {
         if (response.status === 401) throw new Error('Unauthorized to fetch compiled document.');
@@ -137,55 +145,41 @@ export async function fetchCompiledDocument(chatId: string): Promise<CompiledDoc
 
 
 export async function downloadCompiledDocument(chatId: string): Promise<void> {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || defaultApiHost;
     const downloadUrl = `${apiHost}/chat/${chatId}/download-compiled`;
-
     try {
         const response = await fetch(downloadUrl, {
             method: 'GET',
-            credentials: 'include',
+            headers: await getAuthHeadersWithToken(), // Add token for download endpoint
         });
-
+        // ... rest of the download logic remains the same ...
         if (!response.ok) {
             let errorData;
             try {
-                // Try to parse error from backend if it's JSON
                 errorData = await response.json();
             } catch (e) {
-                // Fallback if error response is not JSON
                 errorData = { message: response.statusText || 'Download request failed' };
             }
             throw new Error(errorData.message || `Failed to download document (status: ${response.status})`);
         }
-
-        const blob = await response.blob(); // Get the response body as a Blob
-
-        // Try to get filename from Content-Disposition header
+        const blob = await response.blob();
         const contentDisposition = response.headers.get('content-disposition');
-        let fileName = `compiled_document_${chatId}.pdf`; // Default filename
-
+        let fileName = `compiled_document_${chatId}.pdf`;
         if (contentDisposition) {
             const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
-            // Check if fileNameMatch is not null and the captured group (fileNameMatch[1]) is a string
             if (fileNameMatch && typeof fileNameMatch[1] === 'string') {
                 fileName = fileNameMatch[1];
             }
         }
-
-        // Create a link element, click it to trigger download, then remove it
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = fileName; // Use the extracted or default filename
+        a.download = fileName;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        window.URL.revokeObjectURL(url); // Clean up the object URL
-
+        window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Error downloading compiled document:', error);
-        // Re-throw the error so it can be caught by the calling component (e.g., DocumentPreviewCard)
-        // to display an error message to the user.
         throw error;
     }
 }

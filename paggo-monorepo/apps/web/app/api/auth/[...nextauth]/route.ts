@@ -1,23 +1,27 @@
 import NextAuth, { type NextAuthOptions, DefaultSession, DefaultUser, User as NextAuthUserFromPackage } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import 'next-auth';
+import 'next-auth/jwt';
 
 declare module 'next-auth' {
-    interface Session extends DefaultSession {
+    interface Session {
+        accessToken?: string; // Add accessToken to Session
         user: {
             id: string;
         } & DefaultSession['user'];
-        accessToken?: string;
         error?: string;
     }
 
     interface User extends DefaultUser {
         id: string;
+        accessToken?: string; // Add accessToken to User object returned by authorize
     }
 }
 
 declare module 'next-auth/jwt' {
     interface JWT {
         id?: string;
+        accessToken?: string; // Add accessToken to JWT token
     }
 }
 
@@ -30,7 +34,7 @@ const authOptions: NextAuthOptions = {
                 email: { label: 'Email', type: 'email', placeholder: 'john.doe@example.com' },
                 password: { label: 'Password', type: 'password' },
             },
-            async authorize(credentials, _req): Promise<NextAuthUserFromPackage | null> {
+            async authorize(credentials, _req): Promise<(NextAuthUserFromPackage & { accessToken?: string }) | null> {
                 if (!credentials?.email || !credentials?.password) {
                     return null;
                 }
@@ -45,6 +49,7 @@ const authOptions: NextAuthOptions = {
                 const backendUrl = backendUrlFromEnv.replace(/\/$/, "");
 
                 try {
+                    console.log(`[NextAuth Authorize] Calling backend: ${backendUrl}/auth/login`);
                     const res = await fetch(`${backendUrl}/auth/login`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -55,20 +60,24 @@ const authOptions: NextAuthOptions = {
                     });
 
                     if (!res.ok) {
+                        const errorBody = await res.json().catch(() => ({ message: 'Backend login failed' }));
+                        console.error(`[NextAuth Authorize] Backend login failed (${res.status}):`, errorBody.message);
                         return null;
                     }
-                    const userFromBackend = await res.json();
+                    const backendResponse = await res.json();
 
-                    if (userFromBackend && userFromBackend.id) {
+                    if (backendResponse && backendResponse.user && backendResponse.accessToken) {
                         return {
-                            id: userFromBackend.id,
-                            email: userFromBackend.email,
-                            name: userFromBackend.name,
-                        } as NextAuthUserFromPackage;
+                            id: backendResponse.user.id,
+                            email: backendResponse.user.email,
+                            name: backendResponse.user.name,
+                            accessToken: backendResponse.accessToken, // Pass the token
+                        };
                     }
+                    console.warn('[NextAuth Authorize] Backend response missing user or accessToken.');
                     return null;
                 } catch (error) {
-                    console.error("Error in authorize fetching backend:", error);
+                    console.error("[NextAuth Authorize] Error fetching backend:", error);
                     return null;
                 }
             },
@@ -78,15 +87,20 @@ const authOptions: NextAuthOptions = {
         strategy: "jwt",
     },
     callbacks: {
-        async jwt({ token, user }) {
-            if (user) {
-                token.id = user.id;
+        async jwt({ token, user, account }) {
+            if (account && user) { // Persist the accessToken from user object to the token                token.id = user.id;
+                const userWithToken = user as (NextAuthUserFromPackage & { accessToken?: string });
+                token.accessToken = userWithToken.accessToken;
+                token.id = userWithToken.id; // Ensure id is also set
             }
             return token;
         },
         async session({ session, token }) {
-            if (session.user && token.id) {
-                session.user.id = token.id;
+            if (token.accessToken) {
+                session.accessToken = token.accessToken as string;
+            }
+            if (token.id) {
+                session.user.id = token.id as string;
             }
             return session;
         },

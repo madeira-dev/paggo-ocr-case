@@ -1,9 +1,9 @@
 import { withRelatedProject } from '@vercel/related-projects';
 import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } from '../types/chat';
 
-const backendProjectName = 'paggo-ocr-case-backend';
+const backendProjectName = 'help-nestjs-vercel';
 
-const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL; // development (comment when commiting to github...)
+const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
 
 if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
     throw new Error(

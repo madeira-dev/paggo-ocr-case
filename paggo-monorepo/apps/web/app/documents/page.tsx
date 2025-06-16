@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react"; // Added useCallback
 import { useRouter } from "next/navigation";
 import { DocumentPreviewCard } from "../../components/DocumentPreviewCard";
 import { useSession, signOut } from "next-auth/react";
-// Import downloadCompiledDocument from lib/api
 import {
   fetchUserChats,
   fetchCompiledDocument,
@@ -180,20 +179,16 @@ export default function DocumentsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                {documents.map(
-                  (
-                    doc // doc is ChatSummary, doc.id is the chatId
-                  ) => (
-                    <DocumentPreviewCard
-                      key={doc.id}
-                      id={doc.id} // Pass doc.id as id (chatId)
-                      title={doc.title || "Untitled Document"}
-                      date={new Date(doc.createdAt).toLocaleDateString()}
-                      onClick={() => handlePreviewClick(doc.id)}
-                      onDownload={handleDownloadDocument} // Pass the download handler
-                    />
-                  )
-                )}
+                {documents.map((doc) => (
+                  <DocumentPreviewCard
+                    key={doc.id}
+                    id={doc.id} // Pass doc.id as id (chatId)
+                    title={doc.title || "Untitled Document"}
+                    date={new Date(doc.createdAt).toLocaleDateString()}
+                    onClick={() => handlePreviewClick(doc.id)}
+                    onDownload={handleDownloadDocument} // Pass the download handler
+                  />
+                ))}
               </div>
             )}
           </main>

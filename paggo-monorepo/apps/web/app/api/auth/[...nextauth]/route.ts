@@ -34,7 +34,7 @@ const authOptions: NextAuthOptions = {
                 if (!credentials?.email || !credentials?.password) {
                     return null;
                 }
-                const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL; // development (comment when commiting to github...)
+                const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_API_URL;
 
                 if (typeof backendUrlFromEnv !== 'string' || backendUrlFromEnv.trim() === '') {
                     throw new Error(

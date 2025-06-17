@@ -18,7 +18,9 @@ git clone https://github.com/madeira-dev/help-nestjs-vercel
 ```
 
 To run the project locally, a few environment variables must be set for both frontend and the backend.
+
 Since this project is only a demonstration and has only been developed as part of Paggo's recruitment process and will only be used for this, I will provide the value for almost all environment variables, except OpenAI API key.
+
 For guidance, I will be providing the structure for each file that declares these variables, the only thing that must be done is to fill in the OpenAI API key and the JWT secret.
 
 For the frontend, create a file called .env.local in the [paggo-monoreppo/apps/web/] directory.

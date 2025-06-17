@@ -1,4 +1,4 @@
-# paggo-ocr-case
+# Paggo OCR Case Frontend
 
 Disclaimer: The initial idea was to develop the whole project in a single repository containing both backend and frontend, which would be the best and most elegant approach. It is also possible to notice this initial idea when looking through the structure of this repository (directory called paggo-monorepo, directory called backend…). Although, due to some problems when deploying it to Vercel and considering the given time to complete this project, the best and fastest solution was to split the project in two repositories, one for the frontend and one for the backend. This is the frontend repository.
 The backend repository can be found at: https://github.com/madeira-dev/help-nestjs-vercel

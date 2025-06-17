@@ -18,7 +18,6 @@ import {
   User,
   ImageIcon,
   FileText,
-  UploadCloud,
 } from "lucide-react";
 import { DisplayMessage, Message as BackendMessage } from "../types/chat";
 import { fetchChatMessages, getAuthHeaders, sendMessageApi } from "../lib/api";
@@ -97,9 +96,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setIsLoadingMessages(true);
       setErrorLoadingMessages(null);
       setMessages([]); // Clear previous messages
-      setSelectedFile(null); // Also clear selected file if switching to an existing chat
-      if (fileInputRef.current) fileInputRef.current.value = "";
-
       fetchChatMessages(activeChatIdProp)
         .then((backendMessages) => {
           setMessages(backendMessages.map(mapBackendMessageToDisplay));
@@ -132,7 +128,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       !isBotTyping &&
       !isFileProcessing
     ) {
-      // Allow sending if it's an existing chat OR if it's a new chat and a file is selected
       if (activeChatIdProp || selectedFile) {
         event.preventDefault();
         handleSendMessage();
@@ -144,7 +139,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
       if (file.size > 10 * 1024 * 1024) {
-        // 10MB limit
         alert("File is too large. Maximum size is 10MB.");
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -152,7 +146,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       const supportedTypes = ["image/jpeg", "image/png", "application/pdf"];
       if (!supportedTypes.includes(file.type)) {
         alert(
-          "Unsupported file type. Please upload an image (JPEG, PNG) or PDF."
+          "Unsupported file type. Please upload an image (JPEG, PNG, GIF) or PDF."
         );
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
@@ -170,12 +164,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (e) e.preventDefault();
 
     if (!activeChatIdRef.current && !selectedFile) {
-      alert("Please select a file to start a new chat.");
       return;
     }
 
     if (
-      (!inputValue.trim() && !selectedFile) || // Nothing to send
+      (!inputValue.trim() && !selectedFile) ||
       isFileProcessing ||
       isBotTyping
     ) {
@@ -183,13 +176,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     const currentInputText = inputValue.trim();
-    const currentSelectedFile = selectedFile; // Capture current selected file
-
-    // This should not happen if the above check is in place, but as a fallback:
-    if (!activeChatIdRef.current && !currentSelectedFile) {
-      console.error("Attempted to send message for a new chat without a file.");
-      return;
-    }
+    const currentSelectedFile = selectedFile;
 
     const userDisplayMessageId = `user-${Date.now()}`;
     const userMessageText =
@@ -213,25 +200,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     ]);
 
     setInputValue("");
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
     let extractedTextForAI: string | null = null;
-    let vercelBlobPathname: string | null = null;
-    let originalUserFileName: string | null = null;
+    let vercelBlobPathname: string | null = null; // the unique path/filename from Vercel Blob
+    let originalUserFileName: string | null = null; // the original name of the file uploaded by the user
 
     if (currentSelectedFile) {
       setIsFileProcessing(true);
       originalUserFileName = currentSelectedFile.name;
 
       try {
+        // Upload to Vercel Blob via our frontend API route
+        // Generate a unique filename for Vercel Blob storage to avoid collisions
         const fileExtension = currentSelectedFile.name.split(".").pop();
         const uniqueBlobFileName = `${cuid()}.${fileExtension}`;
 
+        // The /api/upload route expects the file directly in the body
         const uploadResponse = await fetch(
           `/api/upload?filename=${encodeURIComponent(uniqueBlobFileName)}`,
           {
             method: "POST",
             body: currentSelectedFile,
-            headers: { "Content-Type": currentSelectedFile.type },
+            headers: {
+              "Content-Type": currentSelectedFile.type, // Important for Vercel Blob to recognize the file type
+            },
           }
         );
 
@@ -244,14 +238,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               `Upload to Vercel Blob failed for ${currentSelectedFile.name}`
           );
         }
-        const blobResult = await uploadResponse.json();
+        const blobResult = await uploadResponse.json(); // Vercel Blob API response
         vercelBlobPathname = blobResult.pathname;
 
         if (!vercelBlobPathname) {
           throw new Error("Failed to get pathname from Vercel Blob response.");
         }
 
-        // Update message to show processing
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === userDisplayMessageId && msg.attachment
@@ -266,11 +259,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )
         );
 
+        // Call backend OCR with the Vercel Blob pathname
         const ocrPayload = {
           blobPathname: vercelBlobPathname,
           originalFileName: originalUserFileName,
         };
-        const backendOcrUrl = `${process.env.NEXT_PUBLIC_BACKEND_API_URL || "http://localhost:3000"}/ocr/extract-text`;
+
+        const backendOcrUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000"}/ocr/extract-text`;
         const ocrResponse = await fetch(backendOcrUrl, {
           method: "POST",
           headers: getAuthHeaders(),
@@ -287,12 +282,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               `OCR processing failed for ${originalUserFileName}`
           );
         }
+
         const ocrResultData = (await ocrResponse.json()) as { text: string };
         extractedTextForAI = ocrResultData.text;
+
         if (!extractedTextForAI?.trim() && originalUserFileName) {
           extractedTextForAI = `[OCR was unable to extract text from the file: ${originalUserFileName}]`;
         }
 
+        // Update user message: File processing complete
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === userDisplayMessageId
@@ -300,7 +298,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   ...msg,
                   isLoading: false,
                   attachment: msg.attachment
-                    ? { ...msg.attachment, name: originalUserFileName! }
+                    ? { ...msg.attachment, name: originalUserFileName! } // Show original name after processing
                     : undefined,
                 }
               : msg
@@ -327,25 +325,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )
         );
         setIsFileProcessing(false);
-        setSelectedFile(null); // Clear file if processing failed
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        return;
+        return; // Stop further processing
       } finally {
         setIsFileProcessing(false);
       }
-    }
+    } // End of file processing
 
-    setSelectedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
+    // If no text input and no file was successfully processed, do nothing further
     if (!currentInputText && !vercelBlobPathname) {
+      // If the user message was only for a file and it failed, it's already updated with an error.
+      // If it was an empty message attempt, return
       if (
         messages.find((m) => m.id === userDisplayMessageId)?.text ===
         "Empty message"
       ) {
         setMessages((prev) =>
           prev.filter((m) => m.id !== userDisplayMessageId)
-        );
+        ); // Remove "Empty message"
       }
       return;
     }
@@ -366,12 +362,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     try {
       const chatIdForPayload =
         activeChatIdRef.current === null ? undefined : activeChatIdRef.current;
+
       const payloadToAI = {
         chatId: chatIdForPayload,
         message: currentInputText,
         extractedOcrText:
           extractedTextForAI === null ? undefined : extractedTextForAI,
-        fileName: vercelBlobPathname === null ? undefined : vercelBlobPathname, // This is the blob path
+        fileName: vercelBlobPathname === null ? undefined : vercelBlobPathname,
         originalUserFileName:
           originalUserFileName === null ? undefined : originalUserFileName,
       };
@@ -385,6 +382,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             responseData.chatTitle || "New Chat"
           );
         }
+        const newUrl = `/?chatId=${responseData.chatId}`;
+        window.history.pushState({ path: newUrl }, "", newUrl);
       }
 
       setMessages((prev) =>
@@ -421,131 +420,114 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const triggerFileInput = () => {
-    if (!isFileProcessing && !isBotTyping) {
-      fileInputRef.current?.click();
-    }
+    if (!isFileProcessing && !isBotTyping) fileInputRef.current?.click();
   };
 
-  const isNewChatState = !activeChatIdProp;
-  const showUploadOverlay =
-    isNewChatState &&
-    !selectedFile &&
-    !isLoadingMessages &&
-    !errorLoadingMessages;
-
+  const isNewChatWithoutFile = !activeChatIdProp && !selectedFile;
   const isTextareaDisabled =
     isFileProcessing ||
     isBotTyping ||
     isLoadingMessages ||
-    (isNewChatState && !selectedFile); // Disable textarea in new chat until file is selected
-
+    isNewChatWithoutFile;
   const isSendButtonDisabled =
     isFileProcessing ||
     isBotTyping ||
     isLoadingMessages ||
-    (isNewChatState && !selectedFile) || // Disable send in new chat until file is selected
-    (!inputValue.trim() && !selectedFile); // Standard disable if no input and no file
+    isNewChatWithoutFile ||
+    (!inputValue.trim() && !selectedFile);
 
   return (
-    <div className="flex flex-col flex-grow min-h-0 bg-gray-800 text-gray-100 relative">
-      {" "}
-      <div className="relative flex-grow p-4 overflow-y-auto space-y-4 bg-gray-800">
-        {" "}
-        {showUploadOverlay && (
-          <div
-            className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-10 cursor-pointer border-2 border-dashed border-gray-600 hover:border-gray-500 transition-colors duration-150 rounded-md m-4"
-            onClick={triggerFileInput}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) =>
-              (e.key === "Enter" || e.key === " ") && triggerFileInput()
-            }
-            aria-label="Upload document to start chat"
-          >
-            <UploadCloud size={56} className="text-gray-400 mb-4" />
-            <p className="text-xl font-semibold text-gray-300">
-              Upload a Document to Start
-            </p>
-            <p className="text-sm text-gray-500 mt-1">
-              Click here or drag and drop a file.
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              (PDF, PNG, JPG - Max 10MB)
-            </p>
-          </div>
-        )}
-        {isLoadingMessages && !showUploadOverlay && (
+    <div className="flex flex-col flex-grow min-h-0 bg-gray-800 text-gray-100">
+      <div className="flex-grow p-4 overflow-y-auto space-y-4 bg-gray-800">
+        {isLoadingMessages && (
           <div className="flex justify-center items-center h-full">
             <Loader2 size={32} className="animate-spin text-blue-400" />
             <span className="ml-2">Loading messages...</span>
           </div>
         )}
-        {errorLoadingMessages && !showUploadOverlay && (
+        {errorLoadingMessages && (
           <div className="text-center text-red-400 p-4">
             Error loading messages: {errorLoadingMessages}
           </div>
         )}
+
         {!isLoadingMessages &&
           !errorLoadingMessages &&
           messages.length === 0 &&
-          activeChatIdProp && ( // For existing empty chats
+          !activeChatIdProp && (
+            <div className="text-center text-gray-400 p-4">
+              Please upload a document to start a new chat.
+            </div>
+          )}
+
+        {!isLoadingMessages &&
+          !errorLoadingMessages &&
+          messages.length === 0 &&
+          activeChatIdProp && (
             <div className="text-center text-gray-400 p-4">
               No messages in this chat yet. Send one to start!
             </div>
           )}
-        {/* Render messages only if overlay is not shown */}
-        {!showUploadOverlay &&
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} mb-4`}
-            >
-              <div
-                className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-3 rounded-lg shadow ${
-                  msg.sender === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-700 text-gray-200"
-                }`}
-              >
-                {msg.isLoading && msg.sender === "user" && isFileProcessing ? (
-                  <div className="flex items-center space-x-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Processing file...</span>
-                  </div>
-                ) : msg.isLoading && msg.sender === "bot" ? (
-                  <div className="flex items-center space-x-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>{msg.text || "Thinking..."}</span>
-                  </div>
-                ) : (
-                  <span
-                    style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-                  >
-                    {msg.text}
-                  </span>
-                )}
-                {msg.attachment && msg.sender === "user" && (
-                  <div
-                    className={`mt-2 pt-2 text-xs ${msg.sender === "user" ? "border-blue-500" : "border-gray-600"}`}
-                  >
-                    <p className="flex items-center">
-                      {msg.attachment.type.startsWith("image/") ? (
-                        <ImageIcon size={14} className="mr-1 flex-shrink-0" />
-                      ) : (
-                        <FileText size={14} className="mr-1 flex-shrink-0" />
-                      )}
-                      <span className="truncate" title={msg.attachment.name}>
-                        {msg.attachment.name}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </div>
+        {!isLoadingMessages &&
+          !errorLoadingMessages &&
+          messages.length === 0 &&
+          !activeChatIdProp && (
+            <div className="text-center text-gray-400 p-4">
+              Select a chat or start a new one.
             </div>
-          ))}
+          )}
+
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"} mb-4`}
+          >
+            <div
+              className={`max-w-xs lg:max-w-md xl:max-w-lg px-4 py-3 rounded-lg shadow ${
+                msg.sender === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-700 text-gray-200"
+              }`}
+            >
+              {msg.isLoading && msg.sender === "user" && isFileProcessing ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Processing file...</span>
+                </div>
+              ) : msg.isLoading && msg.sender === "bot" ? (
+                <div className="flex items-center space-x-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>{msg.text || "Thinking..."}</span>
+                </div>
+              ) : (
+                <span
+                  style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                >
+                  {msg.text}
+                </span>
+              )}
+              {msg.attachment && msg.sender === "user" && (
+                <div
+                  className={`mt-2 pt-2 text-xs ${msg.sender === "user" ? "border-blue-500" : "border-gray-600"}`}
+                >
+                  <p className="flex items-center">
+                    {msg.attachment.type.startsWith("image/") ? (
+                      <ImageIcon size={14} className="mr-1 flex-shrink-0" />
+                    ) : (
+                      <FileText size={14} className="mr-1 flex-shrink-0" />
+                    )}
+                    <span className="truncate" title={msg.attachment.name}>
+                      {msg.attachment.name}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
         <div ref={messagesEndRef} />
       </div>
-      {/* Input Form Area */}
+
       <form
         onSubmit={handleSendMessage}
         className="p-4 border-t border-gray-700 bg-gray-900"
@@ -582,7 +564,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="flex items-start bg-gray-700 rounded-lg p-2">
           <input
             type="file"
-            accept="image/jpeg,image/png,application/pdf"
+            accept="image/*,application/pdf"
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: "none" }}
@@ -593,7 +575,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             type="button"
             onClick={triggerFileInput}
             className="p-2 text-gray-400 hover:text-gray-200 mt-1"
-            disabled={isFileProcessing || isBotTyping || showUploadOverlay}
+            disabled={isFileProcessing || isBotTyping}
             aria-label="Attach file for OCR"
           >
             <Paperclip size={20} />
@@ -604,7 +586,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              isNewChatState && !selectedFile // Check if it's new chat mode AND no file selected yet
+              isNewChatWithoutFile
                 ? "Upload a document to start chatting..."
                 : selectedFile
                   ? `Add a message for your file ${selectedFile.name}...`

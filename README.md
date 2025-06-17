@@ -62,7 +62,7 @@ npx pnpm install
 
 ### Backend:
 ```bash
-# in the root directory of the backend repository
+cd help-nestjs-vercel/
 npm install
 ```
 

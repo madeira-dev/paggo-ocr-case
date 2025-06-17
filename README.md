@@ -56,7 +56,7 @@ pnpm install
 
 Otherwise, it is possible to achieve the same with npx:
 ```bash
-cd paggo-ocr-case/paggo-monoreppo/apps/web/
+cd paggo-ocr-case/paggo-monorepo/apps/web/
 npx pnpm install
 ```
 

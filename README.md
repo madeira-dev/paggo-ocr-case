@@ -23,7 +23,7 @@ Since this project is only a demonstration and has only been developed as part o
 
 For guidance, I will be providing the structure for each file that declares these variables, the only thing that must be done is to fill in the OpenAI API key and the JWT secret.
 
-For the frontend, create a file called .env.local in the [paggo-monoreppo/apps/web/] directory.
+For the frontend, create a file called .env.local in the paggo-monorepo/apps/web directory.
 This file must contain the following variables:
 ```bash
 NEXTAUTH_URL="https://paggo-ocr-case-ochre.vercel.app"

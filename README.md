@@ -5,7 +5,7 @@ The backend repository can be found at: https://github.com/madeira-dev/help-nest
 
 As it was already provided, the link to access the deployed project is: https://paggo-ocr-case-ochre.vercel.app
 
-Running the project locally:
+### Running the project locally:
 
 First, clone each of the repositories:
 ```bash
@@ -32,7 +32,7 @@ This file must contain the following variables:
 <empty>
 ```
 
-Installing dependencies:
+### Installing dependencies:
 Make sure npm and npx are installed?
 
 Frontend:

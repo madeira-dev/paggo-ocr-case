@@ -8,55 +8,55 @@ As it was already provided, the link to access the deployed project is: <>
 Running the project locally:
 
 First, clone each of the repositories:
-‘’’bash
+```bash
 mkdir paggo-technical-case
 cd paggo-technical-case
 git clone <>
 git clone <>
-‘’’
+```
 
 To run the project locally, a few environment variables must be set for both frontend and the backend.
 For guidance, I will be providing the structure for each file that declares these variables, the only thing that must be done is to fill in the empty variables.
 
 For the frontend, create a file called .env.local in the paggo-ocr-case/paggo-monoreppo/apps/web/ directory.
 This file must contain the following variables:
-‘’’bash
+```bash
 <empty>
-‘’’
+```
 
 For the backend, create a file called .env in the root directory of the backend repository (<>).
 This file must contain the following variables:
-‘’’bash
+```bash
 <empty>
-‘’’
+```
 
 Installing dependencies:
 Make sure npm and npx are installed?
 
 Frontend:
-‘’’bash
+```bash
 cd paggo-ocr-case/paggo-monoreppo/apps/web/
 npx pnpm install
-‘’’
+```
 
 Backend:
-‘’’bash
+```bash
 # in the root directory of the backend repository
 npm install
-‘’’
+```
 
 After successfully setting the environment variables and installing dependencies, you must open a terminal window for each project to start them in development mode.
 
 For the frontend:
-‘’’bash
+```bash
 # in paggo-ocr-case/paggo-monoreppo/apps/web/ directory
 npm run dev
-‘’’
+```
 
 For the backend:
-‘’’bash
+```bash
 # in the root directory of backend repository
 npm run start:dev
-‘’’
+```
 
 By default, the frontend should start at http://localhost:3001 and the backend at http://localhost:3000. The ports might be different for you so please pay attention at what is printed in the terminal as it tells you where to open each project.

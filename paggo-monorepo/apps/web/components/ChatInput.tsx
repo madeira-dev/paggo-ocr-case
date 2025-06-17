@@ -1,23 +1,23 @@
-import React, { useState, useRef } from 'react';
-import { Paperclip, Send } from 'lucide-react'; // Using lucide-react for icons
+import React, { useState, useRef } from "react";
+import { Paperclip, Send } from "lucide-react";
 
 interface ChatInputProps {
   onSendMessage: (message: { text?: string; file?: File }) => void;
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
     if (inputText.trim()) {
       onSendMessage({ text: inputText.trim() });
-      setInputText('');
+      setInputText("");
     }
   };
 
   const handleKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSend();
     }
@@ -30,7 +30,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
     }
     // Reset file input
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 

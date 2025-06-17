@@ -52,7 +52,7 @@ export const CompiledDocumentModal: React.FC<CompiledDocumentModalProps> = ({
         <iframe
           src={fileUrl}
           width="100%"
-          height="400px" // Adjust height as needed
+          height="400px"
           title={documentData.originalFileName}
           className="border border-gray-600 rounded"
         />
@@ -114,7 +114,6 @@ export const CompiledDocumentModal: React.FC<CompiledDocumentModalProps> = ({
         {!isLoading && !error && documentData && (
           <div className="space-y-6 overflow-y-auto pr-2">
             {" "}
-            {/* Added pr-2 for scrollbar spacing */}
             <div>
               <h3 className="text-lg font-medium text-blue-400 mb-1">
                 Original File

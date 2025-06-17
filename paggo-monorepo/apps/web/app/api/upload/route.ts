@@ -20,7 +20,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         return NextResponse.json({ message: 'Filename query parameter is required' }, { status: 400 });
     }
 
-    // Vercel Blob SDK needs the request body directly
     const blob = await put(filenameFromParams, request.body, {
         access: 'public',
     });

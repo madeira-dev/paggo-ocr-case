@@ -1,6 +1,6 @@
 import React from "react";
 import { MessageSquare, Plus, Loader2 } from "lucide-react";
-import { ChatSummary } from "../types/chat"; // Import types
+import { ChatSummary } from "../types/chat";
 
 interface SidebarProps {
   chats: ChatSummary[];
@@ -66,7 +66,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </ul>
         )}
       </nav>
-      {/* Optional: User profile or settings at the bottom */}
     </div>
   );
 };

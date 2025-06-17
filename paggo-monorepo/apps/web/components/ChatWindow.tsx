@@ -1,4 +1,4 @@
-"use client"; // Should be at the very top
+"use client";
 
 import React, {
   useState,
@@ -40,11 +40,8 @@ const mapBackendMessageToDisplay = (msg: BackendMessage): DisplayMessage => ({
       : undefined,
 });
 
-// Define an interface for the OCR result if you haven't already
 interface OcrResult {
   text: string;
-  // storedFileName: string; // This will now come from Vercel Blob's pathname
-  // originalFileName: string; // We'll handle this separately
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -118,7 +115,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [activeChatIdProp]); // Depend on activeChatIdProp
+  }, [activeChatIdProp]);
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(event.target.value);
@@ -131,7 +128,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       !isBotTyping &&
       !isFileProcessing
     ) {
-      // Check if sending is allowed (new chat requires file)
       if (activeChatIdProp || selectedFile) {
         event.preventDefault();
         handleSendMessage();
@@ -147,12 +143,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      const supportedTypes = [
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "application/pdf",
-      ];
+      const supportedTypes = ["image/jpeg", "image/png", "application/pdf"];
       if (!supportedTypes.includes(file.type)) {
         alert(
           "Unsupported file type. Please upload an image (JPEG, PNG, GIF) or PDF."
@@ -173,7 +164,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (e) e.preventDefault();
 
     if (!activeChatIdRef.current && !selectedFile) {
-      // alert("Please upload a document to start a new chat."); // Consider a toast notification
       return;
     }
 
@@ -188,7 +178,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     const currentInputText = inputValue.trim();
     const currentSelectedFile = selectedFile;
 
-    // Optimistically add user message
     const userDisplayMessageId = `user-${Date.now()}`;
     const userMessageText =
       currentInputText ||
@@ -202,7 +191,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         id: userDisplayMessageId,
         text: userMessageText,
         sender: "user",
-        isLoading: !!currentSelectedFile, // Show loading if there's a file to process
+        isLoading: !!currentSelectedFile,
         attachment: currentSelectedFile
           ? { name: currentSelectedFile.name, type: currentSelectedFile.type }
           : undefined,
@@ -215,15 +204,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = "";
 
     let extractedTextForAI: string | null = null;
-    let vercelBlobPathname: string | null = null; // This will be the unique path/filename from Vercel Blob
-    let originalUserFileName: string | null = null; // The original name of the file uploaded by the user
+    let vercelBlobPathname: string | null = null; // the unique path/filename from Vercel Blob
+    let originalUserFileName: string | null = null; // the original name of the file uploaded by the user
 
     if (currentSelectedFile) {
       setIsFileProcessing(true);
       originalUserFileName = currentSelectedFile.name;
 
       try {
-        // Step 1: Upload to Vercel Blob via our frontend API route
+        // Upload to Vercel Blob via our frontend API route
         // Generate a unique filename for Vercel Blob storage to avoid collisions
         const fileExtension = currentSelectedFile.name.split(".").pop();
         const uniqueBlobFileName = `${cuid()}.${fileExtension}`;
@@ -250,14 +239,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           );
         }
         const blobResult = await uploadResponse.json(); // Vercel Blob API response
-        // Expected blobResult: { url: string, pathname: string, contentType: string, contentDisposition: string }
-        vercelBlobPathname = blobResult.pathname; // This is the 'uniqueBlobFileName' we sent
+        vercelBlobPathname = blobResult.pathname;
 
         if (!vercelBlobPathname) {
           throw new Error("Failed to get pathname from Vercel Blob response.");
         }
 
-        // Update UI: File uploaded, now processing OCR
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === userDisplayMessageId && msg.attachment
@@ -272,20 +259,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )
         );
 
-        // Step 2: Call backend OCR with the Vercel Blob pathname
+        // Call backend OCR with the Vercel Blob pathname
         const ocrPayload = {
-          blobPathname: vercelBlobPathname, // Send the path/key of the blob
+          blobPathname: vercelBlobPathname,
           originalFileName: originalUserFileName,
-          // Optionally, you could send blobResult.url if the backend prefers the full URL
-          // blobUrl: blobResult.url,
         };
 
         const backendOcrUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000"}/ocr/extract-text`;
         const ocrResponse = await fetch(backendOcrUrl, {
           method: "POST",
-          headers: getAuthHeaders(), // This helper should set 'Content-Type': 'application/json'
+          headers: getAuthHeaders(),
           body: JSON.stringify(ocrPayload),
-          credentials: "include", // If your OCR endpoint is protected
+          credentials: "include",
         });
 
         if (!ocrResponse.ok) {
@@ -298,11 +283,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           );
         }
 
-        // Assuming OcrResult from backend now primarily returns text,
-        // as storedFileName and originalFileName are handled/derived differently.
-        // The backend /ocr/extract-text might need to change its response structure.
-        // For now, let's assume it returns at least { text: string }
-        const ocrResultData = (await ocrResponse.json()) as { text: string }; // Adjust type as needed
+        const ocrResultData = (await ocrResponse.json()) as { text: string };
         extractedTextForAI = ocrResultData.text;
 
         if (!extractedTextForAI?.trim() && originalUserFileName) {
@@ -348,12 +329,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       } finally {
         setIsFileProcessing(false);
       }
-    } // End of file processing block
+    } // End of file processing
 
     // If no text input and no file was successfully processed, do nothing further
     if (!currentInputText && !vercelBlobPathname) {
       // If the user message was only for a file and it failed, it's already updated with an error.
-      // If it was an empty message attempt, just return.
+      // If it was an empty message attempt, return
       if (
         messages.find((m) => m.id === userDisplayMessageId)?.text ===
         "Empty message"
@@ -386,17 +367,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         chatId: chatIdForPayload,
         message: currentInputText,
         extractedOcrText:
-          extractedTextForAI === null ? undefined : extractedTextForAI, // Line 394 fix
-        fileName: vercelBlobPathname === null ? undefined : vercelBlobPathname, // Consistent handling
+          extractedTextForAI === null ? undefined : extractedTextForAI,
+        fileName: vercelBlobPathname === null ? undefined : vercelBlobPathname,
         originalUserFileName:
-          originalUserFileName === null ? undefined : originalUserFileName, // Consistent handling
+          originalUserFileName === null ? undefined : originalUserFileName,
       };
 
       const responseData = await sendMessageApi(payloadToAI);
 
       if (!activeChatIdRef.current && responseData.chatId) {
         if (onChatCreated) {
-          // Line 402 fixed: responseData.chatTitle is now available
           onChatCreated(
             responseData.chatId,
             responseData.chatTitle || "New Chat"
@@ -411,7 +391,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           msg.id === botThinkingDisplayMessageId
             ? {
                 ...msg,
-                // Line 422 & 423 fixed: responseData.botResponse is now available
                 id: responseData.botResponse.id,
                 text: responseData.botResponse.content,
                 sender: "bot",
@@ -444,7 +423,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!isFileProcessing && !isBotTyping) fileInputRef.current?.click();
   };
 
-  // Determine if the text input should be disabled
   const isNewChatWithoutFile = !activeChatIdProp && !selectedFile;
   const isTextareaDisabled =
     isFileProcessing ||
@@ -473,7 +451,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         )}
 
-        {/* MODIFIED: Initial prompt for new chats */}
         {!isLoadingMessages &&
           !errorLoadingMessages &&
           messages.length === 0 &&
@@ -486,7 +463,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {!isLoadingMessages &&
           !errorLoadingMessages &&
           messages.length === 0 &&
-          activeChatIdProp && ( // Use activeChatIdProp here
+          activeChatIdProp && (
             <div className="text-center text-gray-400 p-4">
               No messages in this chat yet. Send one to start!
             </div>
@@ -494,7 +471,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {!isLoadingMessages &&
           !errorLoadingMessages &&
           messages.length === 0 &&
-          !activeChatIdProp && ( // Use activeChatIdProp here
+          !activeChatIdProp && (
             <div className="text-center text-gray-400 p-4">
               Select a chat or start a new one.
             </div>

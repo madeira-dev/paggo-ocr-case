@@ -28,7 +28,7 @@ export function DocumentPreviewCard({
     setIsDownloading(true);
     setDownloadError(null);
     try {
-      await onDownload(id); // Use the id (chatId) prop
+      await onDownload(id);
     } catch (err) {
       setDownloadError((err as Error).message || "Download failed");
       console.error("Download error on card:", err);

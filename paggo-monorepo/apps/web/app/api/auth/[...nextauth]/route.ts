@@ -5,7 +5,7 @@ import 'next-auth/jwt';
 
 declare module 'next-auth' {
     interface Session {
-        accessToken?: string; // Add accessToken to Session
+        accessToken?: string;
         user: {
             id: string;
         } & DefaultSession['user'];
@@ -14,14 +14,14 @@ declare module 'next-auth' {
 
     interface User extends DefaultUser {
         id: string;
-        accessToken?: string; // Add accessToken to User object returned by authorize
+        accessToken?: string;
     }
 }
 
 declare module 'next-auth/jwt' {
     interface JWT {
         id?: string;
-        accessToken?: string; // Add accessToken to JWT token
+        accessToken?: string;
     }
 }
 
@@ -71,7 +71,7 @@ const authOptions: NextAuthOptions = {
                             id: backendResponse.user.id,
                             email: backendResponse.user.email,
                             name: backendResponse.user.name,
-                            accessToken: backendResponse.accessToken, // Pass the token
+                            accessToken: backendResponse.accessToken,
                         };
                     }
                     console.warn('[NextAuth Authorize] Backend response missing user or accessToken.');
@@ -88,10 +88,10 @@ const authOptions: NextAuthOptions = {
     },
     callbacks: {
         async jwt({ token, user, account }) {
-            if (account && user) { // Persist the accessToken from user object to the token                token.id = user.id;
+            if (account && user) {
                 const userWithToken = user as (NextAuthUserFromPackage & { accessToken?: string });
                 token.accessToken = userWithToken.accessToken;
-                token.id = userWithToken.id; // Ensure id is also set
+                token.id = userWithToken.id;
             }
             return token;
         },

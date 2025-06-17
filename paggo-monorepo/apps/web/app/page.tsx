@@ -47,31 +47,20 @@ export default function HomePage() {
   };
 
   const handleNewChat = async () => {
-    try {
-      const newChat = await createNewChatApi("New Chat");
-      setChats((prevChats) => [newChat, ...prevChats]);
-      setActiveChatId(newChat.id);
-    } catch (error) {
-      console.error("Failed to create new chat:", error);
-      alert(`Error creating new chat: ${(error as Error).message}`);
-    }
+    // try {
+    //   const newChat = await createNewChatApi("New Chat");
+    //   setChats((prevChats) => [newChat, ...prevChats]);
+    //   setActiveChatId(newChat.id);
+    // } catch (error) {
+    //   console.error("Failed to create new chat:", error);
+    //   alert(`Error creating new chat: ${(error as Error).message}`);
+    // }
+    setActiveChatId(null);
   };
 
   const handleChatCreated = (newChatId: string, newChatTitle?: string) => {
     setActiveChatId(newChatId);
-    if (newChatTitle) {
-      setChats((prev) => [
-        {
-          id: newChatId,
-          title: newChatTitle,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        ...prev.filter((chat) => chat.id !== newChatId),
-      ]);
-    } else {
-      loadUserChats();
-    }
+    loadUserChats();
   };
 
   if (status === "loading") {

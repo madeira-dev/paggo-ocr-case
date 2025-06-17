@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react"; // Added useCallback
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { DocumentPreviewCard } from "../../components/DocumentPreviewCard";
 import { useSession, signOut } from "next-auth/react";
@@ -27,7 +27,6 @@ export default function DocumentsPage() {
   const [isLoadingModalData, setIsLoadingModalData] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  // General download error/success message state (optional, for global feedback)
   const [downloadStatusMessage, setDownloadStatusMessage] = useState<
     string | null
   >(null);
@@ -38,7 +37,7 @@ export default function DocumentsPage() {
         setIsLoading(true);
         setError(null);
         try {
-          const data = await fetchUserChats(); // fetchUserChats returns ChatSummary[]
+          const data = await fetchUserChats();
           setDocuments(data);
         } catch (err) {
           setError((err as Error).message);
@@ -82,7 +81,7 @@ export default function DocumentsPage() {
 
   // Handler for the download action
   const handleDownloadDocument = useCallback(async (chatId: string) => {
-    setDownloadStatusMessage(`Preparing download for document ${chatId}...`); // Optional global feedback
+    setDownloadStatusMessage(`Preparing download for document ${chatId}...`);
     try {
       await downloadCompiledDocumentApi(chatId);
       setDownloadStatusMessage(`Download started for document ${chatId}.`);
@@ -93,7 +92,6 @@ export default function DocumentsPage() {
       setDownloadStatusMessage(
         `Failed to download document ${chatId}: ${(err as Error).message}`
       );
-      // Re-throw to allow card to set its own error state
       throw err;
     }
   }, []);
@@ -109,7 +107,6 @@ export default function DocumentsPage() {
   }
 
   if (status === "unauthenticated") {
-    // Already handled by useEffect, but good for explicit rendering
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900 text-white">
         Redirecting to login...
@@ -151,7 +148,6 @@ export default function DocumentsPage() {
             </div>
           </div>
 
-          {/* Optional global download status message */}
           {downloadStatusMessage && (
             <div
               className={`p-2 text-center text-sm ${downloadStatusMessage.startsWith("Failed") ? "bg-red-700" : "bg-blue-700"} text-white`}
@@ -182,11 +178,11 @@ export default function DocumentsPage() {
                 {documents.map((doc) => (
                   <DocumentPreviewCard
                     key={doc.id}
-                    id={doc.id} // Pass doc.id as id (chatId)
+                    id={doc.id}
                     title={doc.title || "Untitled Document"}
                     date={new Date(doc.createdAt).toLocaleDateString()}
                     onClick={() => handlePreviewClick(doc.id)}
-                    onDownload={handleDownloadDocument} // Pass the download handler
+                    onDownload={handleDownloadDocument}
                   />
                 ))}
               </div>

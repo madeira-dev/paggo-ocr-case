@@ -9,7 +9,7 @@ export const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [name, setName] = useState(""); // Add name state for sign up
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export const Login: React.FC = () => {
         );
       } else if (result?.ok) {
         router.push("/");
-        router.refresh(); // Force a refresh to update session state properly
+        router.refresh(); // Force refresh to update session state properly
       }
     } else {
       // Sign Up Logic

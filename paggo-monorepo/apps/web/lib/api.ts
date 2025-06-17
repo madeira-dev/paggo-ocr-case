@@ -1,6 +1,6 @@
 import { withRelatedProject } from '@vercel/related-projects';
 import { ChatSummary, Message as BackendMessage, CompiledDocumentDto, Message } from '../types/chat';
-import { getSession } from 'next-auth/react'; // Import getSession
+import { getSession } from 'next-auth/react';
 
 const backendProjectName = 'help-nestjs-vercel';
 const backendUrlFromEnv = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -18,7 +18,7 @@ const apiHost = withRelatedProject({
 });
 
 export const getAuthHeadersWithToken = async () => {
-    const session = await getSession(); // Get NextAuth session client-side or server-side if applicable
+    const session = await getSession();
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
     if (session?.accessToken) {
         headers['Authorization'] = `Bearer ${session.accessToken}`;
@@ -26,20 +26,6 @@ export const getAuthHeadersWithToken = async () => {
     return headers;
 };
 
-// export async function fetchDataFromBackend() {
-//     try {
-//         console.log("apihost:", apiHost)
-//         const response = await fetch(`${apiHost}/hello`);
-//         if (!response.ok) {
-//             throw new Error(`HTTP error! status: ${response.status}`);
-//         }
-//         const data = await response.json();
-//         return data;
-//     } catch (error) {
-//         console.error('Error fetching data from backend:', error);
-//         throw error;
-//     }
-// }
 
 // --- New Chat API Functions ---
 
@@ -47,8 +33,6 @@ export const getAuthHeadersWithToken = async () => {
 export const getAuthHeaders = () => {
     return {
         'Content-Type': 'application/json',
-        // Cookies are typically sent automatically by the browser for same-origin
-        // or properly configured CORS requests if 'credentials: include' is set on fetch.
     };
 };
 
@@ -56,7 +40,6 @@ export async function fetchUserChats(): Promise<ChatSummary[]> {
     const response = await fetch(`${apiHost}/chat/list`, {
         method: 'GET',
         headers: await getAuthHeadersWithToken(),
-        // credentials: 'include', // No longer strictly needed for JWT auth, but doesn't hurt
     });
     if (!response.ok) {
         if (response.status === 401) throw new Error('Unauthorized: Please log in.');
@@ -99,15 +82,15 @@ export async function createNewChatApi(title?: string): Promise<ChatSummary> {
 export interface SendMessagePayload {
     chatId?: string;
     message: string;
-    extractedOcrText?: string; // Should be string | undefined
-    fileName?: string;         // Should be string | undefined
-    originalUserFileName?: string; // Should be string | undefined
+    extractedOcrText?: string;
+    fileName?: string;
+    originalUserFileName?: string;
 }
 
 export interface SendMessageResponse {
     chatId: string;
-    chatTitle?: string; // Backend returns this, make it optional
-    userMessage: BackendMessage; // Backend returns the saved user message
+    chatTitle?: string;
+    userMessage: BackendMessage;
     botResponse: {
         id: string;
         content: string;
@@ -151,7 +134,6 @@ export async function downloadCompiledDocument(chatId: string): Promise<void> {
             method: 'GET',
             headers: await getAuthHeadersWithToken(), // Add token for download endpoint
         });
-        // ... rest of the download logic remains the same ...
         if (!response.ok) {
             let errorData;
             try {

@@ -18,7 +18,7 @@ import {
   User,
   ImageIcon,
   FileText,
-  UploadCloud, // Import UploadCloud icon
+  UploadCloud,
 } from "lucide-react";
 import { DisplayMessage, Message as BackendMessage } from "../types/chat";
 import { fetchChatMessages, getAuthHeaders, sendMessageApi } from "../lib/api";
@@ -37,7 +37,7 @@ const mapBackendMessageToDisplay = (msg: BackendMessage): DisplayMessage => ({
   timestamp: msg.createdAt,
   attachment:
     msg.fileName && msg.sender === "USER"
-      ? { name: msg.fileName, type: "" } // Assuming type can be inferred or is not critical for display here
+      ? { name: msg.fileName, type: "" }
       : undefined,
 });
 
@@ -169,10 +169,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendMessage = async (e?: FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
 
-    // Crucial check: For a new chat (no activeChatIdRef.current), a file MUST be selected.
     if (!activeChatIdRef.current && !selectedFile) {
-      // This case should ideally be prevented by disabling the send button,
-      // but it's a good safeguard.
       alert("Please select a file to start a new chat.");
       return;
     }
@@ -199,7 +196,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       currentInputText ||
       (currentSelectedFile
         ? `Uploaded: ${currentSelectedFile.name}`
-        : "Empty message"); // Should not be "Empty message" if file is required
+        : "Empty message");
 
     setMessages((prev) => [
       ...prev,
@@ -207,7 +204,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         id: userDisplayMessageId,
         text: userMessageText,
         sender: "user",
-        isLoading: !!currentSelectedFile, // True if there's a file to process
+        isLoading: !!currentSelectedFile,
         attachment: currentSelectedFile
           ? { name: currentSelectedFile.name, type: currentSelectedFile.type }
           : undefined,
@@ -216,8 +213,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     ]);
 
     setInputValue("");
-    // setSelectedFile(null); // Clear selected file AFTER it's been processed or sent
-    // if (fileInputRef.current) fileInputRef.current.value = "";
 
     let extractedTextForAI: string | null = null;
     let vercelBlobPathname: string | null = null;
@@ -340,7 +335,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
-    // Clear selected file state now that it's processed (or if no file was involved)
     setSelectedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
@@ -391,10 +385,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             responseData.chatTitle || "New Chat"
           );
         }
-        // No need to manually push state if onChatCreated updates activeChatId,
-        // which should trigger re-render and URL update via router if necessary.
-        // const newUrl = `/?chatId=${responseData.chatId}`;
-        // window.history.pushState({ path: newUrl }, "", newUrl);
       }
 
       setMessages((prev) =>
@@ -436,7 +426,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const isNewChatState = !activeChatIdProp; // Simpler state for "new chat mode"
+  const isNewChatState = !activeChatIdProp;
   const showUploadOverlay =
     isNewChatState &&
     !selectedFile &&
@@ -459,11 +449,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div className="flex flex-col flex-grow min-h-0 bg-gray-800 text-gray-100 relative">
       {" "}
-      {/* Added relative for overlay positioning context */}
-      {/* Message Display Area */}
       <div className="relative flex-grow p-4 overflow-y-auto space-y-4 bg-gray-800">
         {" "}
-        {/* Added relative for overlay */}
         {showUploadOverlay && (
           <div
             className="absolute inset-0 bg-gray-800 bg-opacity-90 flex flex-col items-center justify-center z-10 cursor-pointer border-2 border-dashed border-gray-600 hover:border-gray-500 transition-colors duration-150 rounded-md m-4"
@@ -595,7 +582,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="flex items-start bg-gray-700 rounded-lg p-2">
           <input
             type="file"
-            accept="image/jpeg,image/png,application/pdf" // More specific accept types
+            accept="image/jpeg,image/png,application/pdf"
             onChange={handleFileChange}
             ref={fileInputRef}
             style={{ display: "none" }}
@@ -606,7 +593,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             type="button"
             onClick={triggerFileInput}
             className="p-2 text-gray-400 hover:text-gray-200 mt-1"
-            disabled={isFileProcessing || isBotTyping || showUploadOverlay} // Disable if overlay is shown (overlay is the primary action)
+            disabled={isFileProcessing || isBotTyping || showUploadOverlay}
             aria-label="Attach file for OCR"
           >
             <Paperclip size={20} />
